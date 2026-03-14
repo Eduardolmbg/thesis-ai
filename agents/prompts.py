@@ -14,7 +14,22 @@ SYSTEM_PROMPT = (
 
 PROFILE_SEARCH_QUERY = "{ticker} empresa o que faz setor de atuacao modelo de negocio"
 
-PROFILE_PROMPT = (
+PROFILE_PROMPT_WITH_BRAPI = (
+    "Aqui estao os dados cadastrais da empresa {ticker}:\n"
+    "Nome: {nome}\n"
+    "Setor: {setor}\n"
+    "Industria: {industria}\n"
+    "Descricao: {descricao}\n\n"
+    "Com base nesses dados E em seu conhecimento geral, escreva um perfil "
+    "conciso e informativo da empresa para um investidor. Inclua: o que faz, "
+    "principais produtos/servicos, mercados de atuacao, posicao competitiva, "
+    "e breve historico. Se a descricao acima estiver vazia ou incompleta, "
+    "use seu conhecimento para complementar.\n\n"
+    "Escreva em paragrafos corridos, sem usar bullet points. "
+    "Limite-se a 3-4 paragrafos. NAO use emojis."
+)
+
+PROFILE_PROMPT_FALLBACK = (
     "Com base nas informacoes disponiveis, escreva um perfil conciso da empresa "
     "cujo ticker e {ticker}. Inclua:\n"
     "- Nome completo da empresa\n"
@@ -25,37 +40,6 @@ PROFILE_PROMPT = (
     "- Posicao competitiva no mercado\n\n"
     "Escreva em paragrafos corridos, sem usar bullet points. "
     "Limite-se a 3-4 paragrafos. NAO use emojis."
-)
-
-# ── Etapa 2: Dados Financeiros ──────────────────────────────────────────
-
-FINANCIALS_SEARCH_QUERY_1 = (
-    "{ticker} resultados financeiros receita EBITDA lucro liquido ultimo trimestre 2024 2025"
-)
-FINANCIALS_SEARCH_QUERY_2 = (
-    "{ticker} indicadores fundamentalistas P/L EV/EBITDA dividend yield ROE margem"
-)
-
-FINANCIALS_PROMPT = (
-    "Com base nos dados disponiveis sobre {ticker}, extraia e organize os "
-    "principais indicadores financeiros.\n\n"
-    "Apresente em formato de tabela Markdown com as colunas: Indicador | Valor\n\n"
-    "Indicadores desejados (inclua os que encontrar):\n"
-    "- Preco atual da acao\n"
-    "- P/L (Preco/Lucro)\n"
-    "- P/VP (Preco/Valor Patrimonial)\n"
-    "- EV/EBITDA\n"
-    "- Dividend Yield\n"
-    "- ROE (Retorno sobre Patrimonio)\n"
-    "- ROIC (Retorno sobre Capital Investido)\n"
-    "- Margem EBITDA\n"
-    "- Margem Liquida\n"
-    "- Divida Liquida/EBITDA\n"
-    "- Receita Liquida (ultimos 12 meses)\n"
-    "- Lucro Liquido (ultimos 12 meses)\n\n"
-    "Se algum indicador nao estiver disponivel, omita da tabela. "
-    "NAO invente valores. Indique a fonte ou periodo quando possivel. "
-    "NAO use emojis."
 )
 
 # ── Etapa 3: Noticias Recentes ──────────────────────────────────────────
@@ -77,21 +61,18 @@ NEWS_PROMPT = (
 # ── Etapa 4: Sintese de Investimento ────────────────────────────────────
 
 SYNTHESIS_PROMPT = (
-    "Com base em toda a analise realizada sobre {ticker}, incluindo o perfil "
-    "da empresa, indicadores financeiros e noticias recentes, escreva uma "
-    "sintese de investimento completa.\n\n"
-    "A sintese deve conter:\n\n"
-    "1. **Vies Geral**: POSITIVO, NEGATIVO ou NEUTRO — justifique em 2-3 frases.\n\n"
+    "Aqui estao os dados completos para analise de {ticker}:\n\n"
+    "DADOS FINANCEIROS (fonte: brapi.dev, dados oficiais):\n{financials_data}\n\n"
+    "PERFIL DA EMPRESA:\n{profile}\n\n"
+    "NOTICIAS RECENTES:\n{news}\n\n"
+    "Com base em TODOS esses dados, gere uma sintese de investimento contendo:\n\n"
+    "1. **Vies Geral**: POSITIVO, NEGATIVO ou NEUTRO — justifique com base nos numeros concretos.\n\n"
     "2. **Pontos Fortes** (3-5 itens):\n"
-    "   - Liste vantagens competitivas, bons indicadores, tendencias favoraveis\n\n"
+    "   - Baseados nos indicadores e vantagens competitivas\n\n"
     "3. **Pontos Fracos** (3-5 itens):\n"
-    "   - Liste desvantagens, indicadores preocupantes, vulnerabilidades\n\n"
+    "   - Baseados nos indicadores e vulnerabilidades\n\n"
     "4. **Riscos-Chave** (3-5 itens):\n"
-    "   - Liste riscos especificos: regulatorios, macroeconomicos, setoriais, etc.\n\n"
-    "Seja objetivo e fundamentado. Nao faca recomendacao de compra/venda. "
-    "NAO use emojis.\n\n"
-    "--- Contexto da analise ---\n\n"
-    "PERFIL:\n{profile}\n\n"
-    "FINANCEIROS:\n{financials}\n\n"
-    "NOTICIAS:\n{news}"
+    "   - Riscos especificos: regulatorios, macroeconomicos, setoriais, etc.\n\n"
+    "Seja objetivo, use os numeros concretos para justificar cada ponto. "
+    "Nao faca recomendacao de compra/venda. NAO use emojis."
 )

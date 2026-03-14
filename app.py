@@ -63,10 +63,29 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    st.markdown(
+        '<div class="sidebar-section-title">brapi.dev Token</div>',
+        unsafe_allow_html=True,
+    )
+
+    brapi_token = st.text_input(
+        "brapi.dev Token",
+        type="password",
+        value=config.BRAPI_TOKEN,
+        help="Gratuito em brapi.dev. Sem token, funciona para PETR4, MGLU3, VALE3, ITUB4.",
+        label_visibility="collapsed",
+    )
+
     if st.button("Salvar configuracao", use_container_width=True):
         st.session_state["provider_name"] = provider_name
         st.session_state["api_key"] = api_key
-        st.success("Configuracao salva.")
+        st.session_state["brapi_token"] = brapi_token
+        config.save_env(
+            LLM_PROVIDER=provider_name,
+            LLM_API_KEY=api_key,
+            BRAPI_TOKEN=brapi_token,
+        )
+        st.success("Configuracao salva no .env.")
 
     st.divider()
 
@@ -92,6 +111,7 @@ with st.sidebar:
 # Resolve provider/key from session or defaults
 active_provider = st.session_state.get("provider_name", provider_name)
 active_key = st.session_state.get("api_key", api_key)
+active_brapi_token = st.session_state.get("brapi_token", brapi_token)
 
 # ── Main area ────────────────────────────────────────────────────────────
 
@@ -114,10 +134,11 @@ analyze_btn = st.button(
 # ── Analysis flow ────────────────────────────────────────────────────────
 
 STEP_LABELS = [
-    "1/4  Pesquisando perfil da empresa...",
-    "2/4  Buscando indicadores financeiros...",
-    "3/4  Analisando noticias recentes...",
-    "4/4  Gerando sintese de investimento...",
+    "1/5  Buscando dados na brapi.dev...",
+    "2/5  Pesquisando perfil da empresa...",
+    "3/5  Montando indicadores financeiros...",
+    "4/5  Analisando noticias recentes...",
+    "5/5  Gerando sintese de investimento...",
 ]
 
 if analyze_btn:
@@ -164,7 +185,11 @@ if analyze_btn:
     # Executa analise
     t_start = time.time()
     with st.spinner("Iniciando analise..."):
-        analyst = StockAnalyst(provider=provider, on_progress=update_progress)
+        analyst = StockAnalyst(
+            provider=provider,
+            on_progress=update_progress,
+            brapi_token=active_brapi_token or None,
+        )
         result = analyst.analyze(ticker)
     elapsed = time.time() - t_start
 
