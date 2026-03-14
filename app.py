@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
 import streamlit as st
 
@@ -10,6 +11,7 @@ import config
 from providers import get_provider
 from agents.stock_analyst import StockAnalyst
 from reports.generator import generate_report, save_report, report_to_html
+from research.yahoo_finance import YFinanceClient
 from utils.formatting import validate_ticker
 from utils.theme import (
     inject_css,
@@ -17,6 +19,11 @@ from utils.theme import (
     render_sidebar_brand,
     render_empty_state,
     render_footer,
+    render_data_cards,
+    render_report_header,
+    render_bias_badge,
+    render_news_with_badges,
+    parse_bias,
     icon,
     COLORS,
 )
@@ -42,11 +49,15 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    _provider_options = ["gemini", "openai", "groq"]
+    _saved_provider = config.LLM_PROVIDER.lower()
+    _provider_index = _provider_options.index(_saved_provider) if _saved_provider in _provider_options else 0
+
     provider_name = st.selectbox(
         "LLM Provider",
-        options=["gemini", "openai", "groq"],
-        index=0,
-        help="Selecione o provedor de LLM. Apenas Gemini esta implementado no momento.",
+        options=_provider_options,
+        index=_provider_index,
+        help="Selecione o provedor de LLM. Apenas Gemini e Groq estao implementados.",
         label_visibility="collapsed",
     )
 
@@ -64,7 +75,7 @@ with st.sidebar:
     )
 
     st.markdown(
-        '<div class="sidebar-section-title">brapi.dev Token</div>',
+        '<div class="sidebar-section-title">brapi.dev Token (opcional)</div>',
         unsafe_allow_html=True,
     )
 
@@ -72,7 +83,7 @@ with st.sidebar:
         "brapi.dev Token",
         type="password",
         value=config.BRAPI_TOKEN,
-        help="Gratuito em brapi.dev. Sem token, funciona para PETR4, MGLU3, VALE3, ITUB4.",
+        help="Fonte primaria: Yahoo Finance (automatico). brapi.dev e usado como fallback.",
         label_visibility="collapsed",
     )
 
@@ -99,14 +110,6 @@ with st.sidebar:
         "fundamentalista de acoes brasileiras.",
         unsafe_allow_html=False,
     )
-    st.markdown(
-        f'<div class="disclaimer">'
-        f"{icon('alert_triangle', size=16)} "
-        f"Este sistema nao constitui recomendacao de investimento. "
-        f"Faca sua propria analise."
-        f"</div>",
-        unsafe_allow_html=True,
-    )
 
 # Resolve provider/key from session or defaults
 active_provider = st.session_state.get("provider_name", provider_name)
@@ -131,10 +134,111 @@ analyze_btn = st.button(
     use_container_width=True,
 )
 
+# ── Chart helper ─────────────────────────────────────────────────────────
+
+def _render_price_chart(ticker: str) -> None:
+    """Render interactive price chart with period selector."""
+    import plotly.graph_objects as go
+
+    PERIOD_LABELS = {
+        "1mo": "1M",
+        "3mo": "3M",
+        "6mo": "6M",
+        "1y": "1A",
+        "2y": "2A",
+        "5y": "5A",
+    }
+
+    col_title, col_period = st.columns([3, 1])
+    with col_title:
+        st.markdown(
+            f'<div class="report-card fade-in chart-title-card">'
+            f'<h2>{icon("trending_up", color=COLORS["accent"])} Cotacao — {ticker}</h2>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with col_period:
+        st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
+        period = st.selectbox(
+            "Periodo",
+            options=list(PERIOD_LABELS.keys()),
+            format_func=lambda x: PERIOD_LABELS[x],
+            index=3,
+            label_visibility="collapsed",
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    yahoo = YFinanceClient()
+    hist = yahoo.get_history(ticker, period=period)
+
+    if hist.empty:
+        st.caption("Historico de precos nao disponivel.")
+        return
+
+    # Calcular variacao no periodo
+    preco_inicio = float(hist["Close"].iloc[0])
+    preco_fim = float(hist["Close"].iloc[-1])
+    variacao = ((preco_fim - preco_inicio) / preco_inicio) * 100
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=hist.index,
+        y=hist["Close"],
+        mode="lines",
+        name="Fechamento",
+        line=dict(color="#3b82f6", width=2),
+        fill="tozeroy",
+        fillcolor="rgba(59, 130, 246, 0.08)",
+        hovertemplate="R$ %{y:,.2f}<extra></extra>",
+    ))
+
+    fig.update_layout(
+        title=None,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="JetBrains Mono, monospace", color="#e4e4e7"),
+        xaxis=dict(
+            showgrid=False,
+            showline=False,
+            color="#71717a",
+            tickfont=dict(size=11),
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.05)",
+            showline=False,
+            color="#71717a",
+            tickfont=dict(size=11),
+            tickprefix="R$ ",
+        ),
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=350,
+        hovermode="x unified",
+        hoverlabel=dict(
+            bgcolor="#1e1e2e",
+            font_size=12,
+            font_family="JetBrains Mono",
+        ),
+        showlegend=False,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Variacao no periodo
+    cor = "#10b981" if variacao >= 0 else "#ef4444"
+    sinal = "+" if variacao >= 0 else ""
+    st.markdown(
+        f'<p style="text-align:right;color:{cor};font-size:13px;'
+        f'font-family:JetBrains Mono,monospace;margin-top:-10px;">'
+        f'{sinal}{variacao:.1f}% no periodo</p>',
+        unsafe_allow_html=True,
+    )
+
 # ── Analysis flow ────────────────────────────────────────────────────────
 
 STEP_LABELS = [
-    "1/5  Buscando dados na brapi.dev...",
+    "1/5  Buscando dados financeiros...",
     "2/5  Pesquisando perfil da empresa...",
     "3/5  Montando indicadores financeiros...",
     "4/5  Analisando noticias recentes...",
@@ -207,13 +311,25 @@ if analyze_btn:
                     st.error(f"**{step}**: {err}")
         st.stop()
 
-    # Gera relatorio
-    report_md = generate_report(result, provider_name=active_provider)
+    # Salva resultado no session_state para o seletor de periodo nao re-rodar a analise
+    st.session_state["last_result"] = result
+    st.session_state["last_ticker"] = ticker
+    st.session_state["last_elapsed"] = elapsed
+    st.session_state["last_provider"] = active_provider
 
-    # Salva no disco
+# ── Render report (from session_state or fresh) ──────────────────────────
+
+if "last_result" in st.session_state:
+    result = st.session_state["last_result"]
+    ticker = st.session_state["last_ticker"]
+    elapsed = st.session_state["last_elapsed"]
+    active_provider = st.session_state.get("last_provider", active_provider)
+
+    # Gera relatorio (markdown para export)
+    report_md = generate_report(result, provider_name=active_provider)
     saved_path = save_report(report_md, ticker)
 
-    # Status com timer
+    # Status bar
     if result.errors:
         st.warning(
             f"Analise de **{ticker}** concluida com avisos. "
@@ -233,12 +349,34 @@ if analyze_btn:
             unsafe_allow_html=True,
         )
 
-    # ── Render report in cards ───────────────────────────────────────────
-    st.markdown('<div class="fade-in fade-in-delay-1">', unsafe_allow_html=True)
+    # ── Report header with logo ──────────────────────────────────────────
+    logo_url = result.brapi_data.get("logo_url", "") if result.brapi_data else ""
+    date_str = datetime.now().strftime("%d/%m/%Y as %H:%M")
 
-    # Section 1: Company profile
+    render_report_header(
+        ticker=ticker,
+        company_name=result.company_name or ticker,
+        logo_url=logo_url,
+        date_str=date_str,
+        provider_name=active_provider,
+    )
+
+    # ── Data cards ───────────────────────────────────────────────────────
+    if result.brapi_data:
+        render_data_cards(result.brapi_data)
+        data_level = result.brapi_data.get("_data_level", "minimal")
+        if data_level != "full":
+            st.caption(
+                "Dados fundamentalistas limitados. Para dados completos, "
+                "use PETR4, MGLU3, VALE3 ou ITUB4, ou configure um plano brapi.dev Pro."
+            )
+
+    # ── Price chart ──────────────────────────────────────────────────────
+    _render_price_chart(ticker)
+
+    # ── Section 1: Company profile ───────────────────────────────────────
     st.markdown(
-        f'<div class="report-card">'
+        f'<div class="report-card fade-in">'
         f'<h2>{icon("building", color=COLORS["accent"])} Visao Geral da Empresa</h2>'
         f"</div>",
         unsafe_allow_html=True,
@@ -248,9 +386,9 @@ if analyze_btn:
     else:
         st.caption("Informacao nao disponivel.")
 
-    # Section 2: Financial indicators
+    # ── Section 2: Financial indicators ──────────────────────────────────
     st.markdown(
-        f'<div class="report-card">'
+        f'<div class="report-card fade-in">'
         f'<h2>{icon("bar_chart", color=COLORS["accent"])} Indicadores Financeiros</h2>'
         f"</div>",
         unsafe_allow_html=True,
@@ -260,31 +398,33 @@ if analyze_btn:
     else:
         st.caption("Informacao nao disponivel.")
 
-    # Section 3: News
+    # ── Section 3: News with badges ──────────────────────────────────────
     st.markdown(
-        f'<div class="report-card">'
+        f'<div class="report-card fade-in">'
         f'<h2>{icon("newspaper", color=COLORS["accent"])} Noticias Recentes</h2>'
         f"</div>",
         unsafe_allow_html=True,
     )
     if result.news:
-        st.markdown(result.news, unsafe_allow_html=True)
+        news_html = render_news_with_badges(result.news)
+        st.markdown(news_html, unsafe_allow_html=True)
     else:
         st.caption("Informacao nao disponivel.")
 
-    # Section 4: Investment synthesis
+    # ── Section 4: Synthesis with bias badge ─────────────────────────────
     st.markdown(
-        f'<div class="report-card">'
+        f'<div class="report-card fade-in">'
         f'<h2>{icon("brain", color=COLORS["accent"])} Sintese de Investimento</h2>'
         f"</div>",
         unsafe_allow_html=True,
     )
     if result.synthesis:
+        bias = parse_bias(result.synthesis)
+        badge_html = render_bias_badge(bias)
+        st.markdown(badge_html, unsafe_allow_html=True)
         st.markdown(result.synthesis, unsafe_allow_html=True)
     else:
         st.caption("Informacao nao disponivel.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Export buttons ───────────────────────────────────────────────────
     st.divider()
@@ -309,8 +449,15 @@ if analyze_btn:
             use_container_width=True,
         )
 
-    st.caption(f"Relatorio salvo em: `{saved_path}`")
-
+    # Data source indicator
+    data_source = result.brapi_data.get("_data_source", "web") if result.brapi_data else "web"
+    source_label = {
+        "yfinance": "Yahoo Finance via yfinance",
+        "brapi": "brapi.dev",
+    }.get(data_source, "busca web")
+    st.caption(
+        f"Dados: {source_label} | Relatorio salvo em: `{saved_path}`"
+    )
     render_footer(config.APP_VERSION)
 
 # ── Empty state ──────────────────────────────────────────────────────────

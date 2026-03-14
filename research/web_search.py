@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 import config
 
@@ -28,10 +28,16 @@ def search_duckduckgo(query: str, max_results: int | None = None) -> list[dict]:
             results = list(
                 ddgs.text(
                     query,
-                    region="br-pt",
+                    region="pt-br",
                     max_results=max_results,
                 )
             )
+        # Se pt-br retornou vazio, tenta sem region
+        if not results:
+            with DDGS() as ddgs:
+                results = list(
+                    ddgs.text(query, max_results=max_results)
+                )
         return [
             {
                 "title": r.get("title", ""),

@@ -41,6 +41,7 @@ ICONS = {
     "arrow_right": f'<svg {_ICON_STYLE}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
     "chevron_right": f'<svg {_ICON_STYLE} width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>',
     "info": f'<svg {_ICON_STYLE}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    "external_link": f'<svg {_ICON_STYLE} width="14" height="14"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
 }
 
 
@@ -224,12 +225,24 @@ tbody tr:hover td {
     background: %(surface)s;
     border: 1px solid %(border)s;
     border-radius: 12px;
-    padding: 28px 32px;
+    padding: 16px 32px;
     margin-bottom: 20px;
     animation: fadeSlideIn 0.4s ease-out both;
 }
+.chart-title-card {
+    margin-bottom: 10px !important;
+}
+.chart-period-wrapper {
+    display: flex;
+    align-items: center;
+    height: 100%%;
+    padding-top: 4px;
+}
 .report-card h2 {
     margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+    border-bottom: none !important;
     font-size: 1.15rem !important;
     font-weight: 600 !important;
     letter-spacing: 0.02em;
@@ -424,6 +437,145 @@ tbody tr:hover td {
     gap: 6px;
 }
 
+/* ── Data cards grid ────────────────────────────────────── */
+.data-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 20px 0 30px 0;
+}
+@media (max-width: 768px) {
+    .data-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+.data-card {
+    background: %(surface)s;
+    border: 1px solid %(border)s;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.data-card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.02em;
+}
+.data-card-icon.market  { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.data-card-icon.profit  { background: rgba(16,185,129,0.15); color: #10b981; }
+.data-card-icon.risk    { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.data-card-icon.growth  { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+.data-card-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: %(text_secondary)s !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.data-card-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: %(text)s !important;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.2;
+}
+.data-card-detail {
+    font-size: 12px;
+    color: %(text_secondary)s !important;
+}
+.data-card-detail.positive { color: #10b981 !important; }
+.data-card-detail.negative { color: #ef4444 !important; }
+
+/* ── Report header ─────────────────────────────────────── */
+.report-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+    animation: fadeSlideIn 0.4s ease-out both;
+}
+.report-header img {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: %(surface)s;
+    padding: 4px;
+    border: 1px solid %(border)s;
+}
+.report-header-text h1 {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 1.6rem !important;
+    line-height: 1.3 !important;
+}
+.report-header-meta {
+    color: %(text_secondary)s !important;
+    font-size: 0.78rem;
+}
+
+/* ── Viés badge (large) ────────────────────────────────── */
+.bias-badge {
+    display: inline-block;
+    padding: 6px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-family: 'DM Sans', sans-serif;
+    margin-bottom: 12px;
+}
+.bias-badge.positive { background: #10b981; color: #fff; }
+.bias-badge.negative { background: #ef4444; color: #fff; }
+.bias-badge.neutral  { background: #f59e0b; color: #000; }
+
+/* ── News item ─────────────────────────────────────────── */
+.news-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+.news-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+.news-badge.positive { background: #10b981; color: #fff; }
+.news-badge.negative { background: #ef4444; color: #fff; }
+.news-badge.neutral  { background: #f59e0b; color: #000; }
+.news-text {
+    color: %(text)s !important;
+    font-size: 14px;
+}
+.news-link {
+    color: %(text_secondary)s !important;
+    text-decoration: none !important;
+    transition: color 0.2s;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+.news-link:hover {
+    color: %(accent)s !important;
+}
+.news-link svg {
+    vertical-align: middle;
+}
+
 /* ── Misc ───────────────────────────────────────────────── */
 [data-testid="stMarkdownContainer"] a {
     color: %(accent)s !important;
@@ -555,3 +707,251 @@ def sentiment_badge(sentiment: str, large: bool = False) -> str:
     if "NEGATIV" in s:
         return f'<span class="{size_class} badge-negative">NEGATIVO</span>'
     return f'<span class="{size_class} badge-neutral">NEUTRO</span>'
+
+
+# ── Data cards ───────────────────────────────────────────────────────────
+
+def _card_html(icon_text: str, icon_class: str, label: str, value: str, detail: str = "") -> str:
+    """Build HTML for a single data card."""
+    detail_html = ""
+    if detail:
+        # Detect positive/negative for coloring
+        css_class = "data-card-detail"
+        if detail.startswith("+") or detail.startswith("Var: +"):
+            css_class += " positive"
+        elif detail.startswith("-") or detail.startswith("Var: -"):
+            css_class += " negative"
+        detail_html = f'<div class="{css_class}">{detail}</div>'
+
+    return (
+        f'<div class="data-card">'
+        f'<div class="data-card-icon {icon_class}">{icon_text}</div>'
+        f'<div class="data-card-label">{label}</div>'
+        f'<div class="data-card-value">{value}</div>'
+        f'{detail_html}'
+        f'</div>'
+    )
+
+
+def render_data_cards(data: dict) -> None:
+    """Render a grid of financial data cards from structured data."""
+    import streamlit as st
+    from utils.formatting import (
+        format_market_cap, format_currency, format_percent, format_multiple,
+        _is_number,
+    )
+
+    def _val(key: str) -> bool:
+        return _is_number(data.get(key))
+
+    # Row 1 — Mercado
+    price = format_currency(data.get("preco_atual")) if _val("preco_atual") else "N/D"
+    var = data.get("variacao_dia")
+    var_detail = ""
+    if _is_number(var):
+        sign = "+" if var >= 0 else ""
+        var_detail = f"Var: {sign}{var:.2f}%"
+
+    mcap = format_market_cap(data.get("market_cap"))
+    pl = format_multiple(data.get("preco_lucro")) if _val("preco_lucro") else "N/D"
+    ev_ebitda = format_multiple(data.get("ev_ebitda")) if _val("ev_ebitda") else "N/D"
+
+    # Row 2 — Rentabilidade
+    roe = format_percent(data.get("roe")) if _val("roe") else "N/D"
+    me = format_percent(data.get("margem_ebitda")) if _val("margem_ebitda") else "N/D"
+    ml = format_percent(data.get("margem_lucro")) if _val("margem_lucro") else "N/D"
+    dy = format_percent(data.get("dividend_yield")) if _val("dividend_yield") else "N/D"
+
+    # Row 3 — Endividamento e Crescimento
+    de = data.get("divida_equity")
+    de_str = format_percent(de, is_ratio=False) if _is_number(de) else "N/D"
+
+    ll = data.get("lucro_liquido")
+    ll_str = format_currency(ll) if _is_number(ll) else "N/D"
+    ll_detail = ""
+    ll_hist = data.get("lucro_liquido_historico") or {}
+    if _is_number(ll) and len(ll_hist) >= 2:
+        years = sorted(ll_hist.keys(), reverse=True)
+        if len(years) >= 2:
+            curr = ll_hist[years[0]]
+            prev = ll_hist[years[1]]
+            if _is_number(curr) and _is_number(prev) and prev != 0:
+                yoy = ((curr - prev) / abs(prev)) * 100
+                sign = "+" if yoy >= 0 else ""
+                ll_detail = f"{sign}{yoy:.1f}% YoY"
+
+    fcf = data.get("free_cashflow")
+    fcf_str = format_currency(fcf) if _is_number(fcf) else "N/D"
+
+    cr = data.get("crescimento_receita")
+    if _is_number(cr):
+        sign = "+" if cr >= 0 else ""
+        cr_str = f"{sign}{cr*100:.1f}%"
+    else:
+        cr_str = "N/D"
+
+    row1 = (
+        _card_html("R$", "market", "Preco", price, var_detail)
+        + _card_html("MC", "market", "Market Cap", mcap)
+        + _card_html("P/L", "market", "Preco/Lucro", pl)
+        + _card_html("EV", "market", "EV/EBITDA", ev_ebitda)
+    )
+    row2 = (
+        _card_html("ROE", "profit", "Ret. s/ Patrimonio", roe)
+        + _card_html("ME", "profit", "Margem EBITDA", me)
+        + _card_html("ML", "profit", "Margem Liquida", ml)
+        + _card_html("DY", "profit", "Dividend Yield", dy)
+    )
+    row3 = (
+        _card_html("LL", "profit", "Lucro Liquido", ll_str, ll_detail)
+        + _card_html("D/E", "risk", "Div./Equity", de_str)
+        + _card_html("FCF", "growth", "Free Cash Flow", fcf_str)
+        + _card_html("CR", "growth", "Cresc. Receita", cr_str)
+    )
+
+    html = (
+        f'<div class="data-cards-grid fade-in fade-in-delay-1">{row1}</div>'
+        f'<div class="data-cards-grid fade-in fade-in-delay-2">{row2}</div>'
+        f'<div class="data-cards-grid fade-in fade-in-delay-3">{row3}</div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_report_header(
+    ticker: str,
+    company_name: str,
+    logo_url: str,
+    date_str: str,
+    provider_name: str,
+) -> None:
+    """Render the report title with company logo."""
+    import streamlit as st
+
+    logo_html = ""
+    if logo_url:
+        logo_html = (
+            f'<img src="{logo_url}" alt="{ticker}" '
+            f'onerror="this.style.display=\'none\'">'
+        )
+
+    st.markdown(
+        f'<div class="report-header">'
+        f'{logo_html}'
+        f'<div class="report-header-text">'
+        f'<h1>Analise: {company_name} ({ticker})</h1>'
+        f'<span class="report-header-meta">'
+        f'Gerado em {date_str} por thesis-ai | Provider: {provider_name}'
+        f'</span>'
+        f'</div>'
+        f'</div>'
+        f'<div class="gradient-line"></div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── Sentiment parsing ────────────────────────────────────────────────────
+
+import re as _re
+
+
+def parse_bias(synthesis_text: str) -> str:
+    """Parse the bias (POSITIVO/NEGATIVO/NEUTRO) from synthesis output.
+
+    Searches for patterns like 'VIES: POSITIVO', 'Vies Geral: NEGATIVO',
+    or just the word after known markers.
+    """
+    text_upper = synthesis_text.upper()
+
+    # Pattern 1: "VIES: POSITIVO" or "VIÉS: NEUTRO"
+    match = _re.search(r'VI[EÉ]S[:\s]+\[?(POSITIVO|NEGATIVO|NEUTRO)\]?', text_upper)
+    if match:
+        return match.group(1)
+
+    # Pattern 2: standalone after "**Viés" markdown
+    match = _re.search(r'\*\*VI[EÉ]S.*?\*\*[:\s]*(POSITIVO|NEGATIVO|NEUTRO)', text_upper)
+    if match:
+        return match.group(1)
+
+    # Pattern 3: first occurrence of the keyword
+    for keyword in ["POSITIVO", "NEGATIVO", "NEUTRO"]:
+        if keyword in text_upper[:300]:
+            return keyword
+
+    return "NEUTRO"
+
+
+def render_bias_badge(bias: str) -> str:
+    """Return HTML for the large bias badge."""
+    b = bias.strip().upper()
+    if "POSITIV" in b:
+        return '<span class="bias-badge positive">POSITIVO</span>'
+    if "NEGATIV" in b:
+        return '<span class="bias-badge negative">NEGATIVO</span>'
+    return '<span class="bias-badge neutral">NEUTRO</span>'
+
+
+def render_news_with_badges(news_text: str) -> str:
+    """Parse news text with [POSITIVA]/[NEGATIVA]/[NEUTRA] tags and render with badges."""
+    if not news_text:
+        return ""
+
+    lines = news_text.strip().split("\n")
+    items: list[str] = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Strip leading markdown bullets/numbers
+        clean = _re.sub(r'^[\d]+[\.\)]\s*', '', line)
+        clean = _re.sub(r'^[-\*]\s*', '', clean)
+
+        # Match sentiment tag
+        match = _re.match(r'\[?(POSITIVA|NEGATIVA|NEUTRA)\]?\s*[:\-–]?\s*(.*)', clean, _re.IGNORECASE)
+        if match:
+            sentiment = match.group(1).upper()
+            text = match.group(2).strip()
+            if not text:
+                continue
+
+            if "POSITIV" in sentiment:
+                badge_class = "positive"
+                badge_text = "POSITIVA"
+            elif "NEGATIV" in sentiment:
+                badge_class = "negative"
+                badge_text = "NEGATIVA"
+            else:
+                badge_class = "neutral"
+                badge_text = "NEUTRA"
+
+            # Extract URL if present (format: "summary | URL: https://...")
+            link_html = ""
+            url_match = _re.search(r'\|\s*URL:\s*(https?://\S+)', text)
+            if url_match:
+                url = url_match.group(1).rstrip(".,;)")
+                text = text[:url_match.start()].strip()
+                link_html = (
+                    f' <a href="{url}" target="_blank" rel="noopener noreferrer" '
+                    f'class="news-link" title="Abrir fonte">'
+                    f'{icon("external_link", size=14)}</a>'
+                )
+
+            items.append(
+                f'<div class="news-item">'
+                f'<span class="news-badge {badge_class}">{badge_text}</span>'
+                f'<span class="news-text">{text}{link_html}</span>'
+                f'</div>'
+            )
+        elif clean and len(clean) > 10:
+            # Lines without tags — render as plain text if substantial
+            # Skip section headers like "Positivas:", "Negativas:"
+            if _re.match(r'^(positiva|negativa|neutra|noticia)s?[:\s]*$', clean, _re.IGNORECASE):
+                continue
+            items.append(
+                f'<div class="news-item">'
+                f'<span class="news-text">{clean}</span>'
+                f'</div>'
+            )
+
+    return "\n".join(items) if items else news_text

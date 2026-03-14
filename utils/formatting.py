@@ -86,7 +86,7 @@ def format_multiple(value: Any, suffix: str = "x") -> str:
 
 
 def build_indicators_table(data: dict[str, Any]) -> str:
-    """Monta tabela Markdown de indicadores a partir dos dados estruturados da brapi.
+    """Monta tabela Markdown de indicadores a partir dos dados estruturados.
 
     Filtra automaticamente indicadores com valor 'N/D'.
     """
@@ -99,15 +99,19 @@ def build_indicators_table(data: dict[str, Any]) -> str:
         ("EV/EBITDA", format_multiple(data.get("ev_ebitda"))),
         ("LPA", format_currency(data.get("lpa")) if _is_number(data.get("lpa")) else "N/D"),
         ("Dividend Yield", format_percent(data.get("dividend_yield"))),
+        ("Payout Ratio", format_percent(data.get("payout_ratio")) if _is_number(data.get("payout_ratio")) else "N/D"),
         ("ROE", format_percent(data.get("roe"))),
         ("ROA", format_percent(data.get("roa"))),
         ("Margem EBITDA", format_percent(data.get("margem_ebitda"))),
+        ("Margem Operacional", format_percent(data.get("margem_operacional")) if _is_number(data.get("margem_operacional")) else "N/D"),
         ("Margem Liquida", format_percent(data.get("margem_lucro"))),
         ("Margem Bruta", format_percent(data.get("margem_bruta"))),
         ("Div. Liq./Equity", format_percent(data.get("divida_equity"), is_ratio=False) if _is_number(data.get("divida_equity")) else "N/D"),
         ("Receita Total", format_currency(data.get("receita_total"))),
         ("EBITDA", format_currency(data.get("ebitda"))),
         ("Lucro Bruto", format_currency(data.get("lucro_bruto"))),
+        ("Lucro Liquido", format_currency(data.get("lucro_liquido")) if _is_number(data.get("lucro_liquido")) else "N/D"),
+        ("Free Cash Flow", format_currency(data.get("free_cashflow")) if _is_number(data.get("free_cashflow")) else "N/D"),
         ("Caixa Total", format_currency(data.get("caixa_total"))),
         ("Divida Total", format_currency(data.get("divida_total"))),
         ("Cresc. Receita", format_percent(data.get("crescimento_receita"))),
@@ -140,13 +144,17 @@ def structured_data_summary(data: dict[str, Any]) -> str:
         ("P/VP", "pvp", lambda v: format_multiple(v)),
         ("EV/EBITDA", "ev_ebitda", lambda v: format_multiple(v)),
         ("Dividend Yield", "dividend_yield", lambda v: format_percent(v)),
+        ("Payout Ratio", "payout_ratio", lambda v: format_percent(v)),
         ("ROE", "roe", lambda v: format_percent(v)),
         ("ROA", "roa", lambda v: format_percent(v)),
         ("Margem EBITDA", "margem_ebitda", lambda v: format_percent(v)),
+        ("Margem Operacional", "margem_operacional", lambda v: format_percent(v)),
         ("Margem Liquida", "margem_lucro", lambda v: format_percent(v)),
         ("Div./Equity", "divida_equity", lambda v: format_percent(v, is_ratio=False)),
         ("Receita Total", "receita_total", format_currency),
         ("EBITDA", "ebitda", format_currency),
+        ("Lucro Liquido", "lucro_liquido", format_currency),
+        ("Free Cash Flow", "free_cashflow", format_currency),
         ("Caixa Total", "caixa_total", format_currency),
         ("Divida Total", "divida_total", format_currency),
         ("Cresc. Receita", "crescimento_receita", lambda v: format_percent(v)),
@@ -156,5 +164,17 @@ def structured_data_summary(data: dict[str, Any]) -> str:
         val = data.get(key)
         if _is_number(val):
             lines.append(f"- {label}: {fmt(val)}")
+
+    # Historico de lucro liquido (contexto extra para o LLM)
+    ll_hist = data.get("lucro_liquido_historico") or {}
+    if ll_hist:
+        sorted_years = sorted(ll_hist.keys(), reverse=True)
+        hist_parts = [
+            f"{y}: {format_currency(ll_hist[y])}"
+            for y in sorted_years
+            if _is_number(ll_hist[y])
+        ]
+        if hist_parts:
+            lines.append(f"- Historico Lucro Liquido: {' | '.join(hist_parts)}")
 
     return "\n".join(lines) if lines else "Dados financeiros nao disponiveis."

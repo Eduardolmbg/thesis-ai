@@ -11,10 +11,9 @@ from providers.base import BaseLLMProvider
 from research.brapi import (
     BrapiClient,
     BrapiError,
-    BrapiTickerNotFound,
-    BrapiTokenRequired,
     extract_structured_data,
 )
+from research.yahoo_finance import YFinanceClient
 from research.web_search import research
 from utils.formatting import build_indicators_table, structured_data_summary
 
@@ -59,25 +58,26 @@ class StockAnalyst:
         self.provider = provider
         self.on_progress = on_progress
         self.brapi = BrapiClient(token=brapi_token)
+        self.yahoo = YFinanceClient()
 
     def analyze(self, ticker: str) -> AnalysisResult:
         """Executa a analise completa para o ticker informado."""
         ticker = ticker.strip().upper()
         result = AnalysisResult(ticker=ticker)
 
-        # Etapa 0 — Dados estruturados da brapi.dev
-        self.on_progress("Buscando dados na brapi.dev...", 0.0)
-        self._step_brapi(ticker, result)
+        # Etapa 0 — Dados estruturados (yfinance primario, brapi fallback)
+        self.on_progress("Buscando dados financeiros...", 0.0)
+        self._step_fetch_data(ticker, result)
 
         # Etapa 1 — Perfil da Empresa
         self.on_progress("Pesquisando perfil da empresa...", 0.20)
         result.profile = self._step_profile(ticker, result)
 
-        # Nome da empresa (brapi ou extraido do perfil)
+        # Nome da empresa (dados ou extraido do perfil)
         if not result.company_name:
             result.company_name = self._extract_company_name(ticker, result.profile)
 
-        # Etapa 2 — Indicadores Financeiros (tabela direta dos dados brapi)
+        # Etapa 2 — Indicadores Financeiros (tabela direta dos dados)
         self.on_progress("Montando indicadores financeiros...", 0.40)
         result.financials = self._step_financials(ticker, result)
 
@@ -94,8 +94,25 @@ class StockAnalyst:
 
     # ── Etapas individuais ───────────────────────────────────────────────
 
-    def _step_brapi(self, ticker: str, result: AnalysisResult) -> None:
-        """Etapa 0: busca dados estruturados da brapi.dev."""
+    def _step_fetch_data(self, ticker: str, result: AnalysisResult) -> None:
+        """Etapa 0: busca dados estruturados (yfinance -> brapi -> web only)."""
+
+        # Tentativa 1: yfinance (primario)
+        try:
+            quote = self.yahoo.get_quote(ticker)
+            if quote and quote.get("regularMarketPrice") is not None:
+                result.brapi_data = extract_structured_data(quote)
+                result.company_name = (
+                    result.brapi_data.get("nome")
+                    if result.brapi_data.get("nome") != "N/D"
+                    else ""
+                ) or ""
+                logger.info("Dados obtidos via yfinance para %s", ticker)
+                return
+        except Exception as e:
+            logger.warning("yfinance falhou para %s: %s", ticker, e)
+
+        # Tentativa 2: brapi.dev (fallback)
         try:
             quote = self.brapi.get_quote(ticker)
             result.brapi_data = extract_structured_data(quote)
@@ -104,29 +121,26 @@ class StockAnalyst:
                 if result.brapi_data.get("nome") != "N/D"
                 else ""
             ) or ""
-        except BrapiTickerNotFound as e:
-            logger.warning("Ticker nao encontrado na brapi: %s", e)
-            result.errors["brapi"] = str(e)
-        except BrapiTokenRequired as e:
-            logger.warning("Token brapi necessario: %s", e)
-            result.errors["brapi"] = str(e)
+            logger.info("Dados obtidos via brapi.dev para %s", ticker)
+            return
         except BrapiError as e:
-            logger.warning("brapi indisponivel, usando fallback web: %s", e)
-            result.errors["brapi"] = (
-                f"brapi.dev indisponivel. Usando apenas busca web. ({e})"
+            logger.warning("brapi.dev tambem falhou para %s: %s", ticker, e)
+            result.errors["dados"] = (
+                f"Yahoo Finance e brapi.dev indisponiveis. "
+                f"Usando apenas busca web. ({e})"
             )
 
     def _step_profile(self, ticker: str, result: AnalysisResult) -> str:
-        """Etapa 1: perfil da empresa (brapi data + web search)."""
+        """Etapa 1: perfil da empresa (dados estruturados + web search)."""
         try:
-            brapi = result.brapi_data
-            if brapi and brapi.get("nome") != "N/D":
+            data = result.brapi_data
+            if data and data.get("nome") != "N/D":
                 prompt = prompts.PROFILE_PROMPT_WITH_BRAPI.format(
                     ticker=ticker,
-                    nome=brapi.get("nome", "N/D"),
-                    setor=brapi.get("setor", "N/D"),
-                    industria=brapi.get("industria", "N/D"),
-                    descricao=brapi.get("descricao", "N/D"),
+                    nome=data.get("nome", "N/D"),
+                    setor=data.get("setor", "N/D"),
+                    industria=data.get("industria", "N/D"),
+                    descricao=data.get("descricao", "N/D"),
                 )
             else:
                 prompt = prompts.PROFILE_PROMPT_FALLBACK.format(ticker=ticker)
@@ -144,16 +158,20 @@ class StockAnalyst:
             return ""
 
     def _step_financials(self, ticker: str, result: AnalysisResult) -> str:
-        """Etapa 2: indicadores financeiros (tabela direta da brapi)."""
+        """Etapa 2: indicadores financeiros (tabela direta dos dados)."""
         try:
             if result.brapi_data:
                 table = build_indicators_table(result.brapi_data)
-                source_note = "\n\n*Fonte: brapi.dev — dados em tempo real.*"
+                source = result.brapi_data.get("_data_source", "brapi")
+                source_label = (
+                    "Yahoo Finance" if source == "yfinance" else "brapi.dev"
+                )
+                source_note = f"\n\n*Fonte: {source_label}*"
                 return table + source_note
 
-            # Fallback: sem dados brapi, usa LLM + web search
+            # Fallback: sem dados estruturados, usa LLM + web search
             logger.info(
-                "Sem dados brapi para %s, usando fallback web para financeiros",
+                "Sem dados estruturados para %s, usando fallback web",
                 ticker,
             )
             query = f"{ticker} indicadores fundamentalistas P/L ROE margem EBITDA dividend yield"
@@ -181,7 +199,7 @@ class StockAnalyst:
             query = prompts.NEWS_SEARCH_QUERY.format(
                 ticker=ticker, company_name=company
             )
-            prompt = prompts.NEWS_PROMPT.format(ticker=ticker)
+            prompt = prompts.NEWS_PROMPT.format(ticker=ticker, nome=company)
             return research(
                 query=query,
                 provider=self.provider,
@@ -199,11 +217,20 @@ class StockAnalyst:
             # Monta resumo dos dados financeiros para contexto do LLM
             if result.brapi_data:
                 financials_ctx = structured_data_summary(result.brapi_data)
+                data_level = result.brapi_data.get("_data_level", "minimal")
+                if data_level != "full":
+                    financials_ctx += (
+                        "\n\nNota: alguns indicadores financeiros nao estavam "
+                        "disponiveis via API. Baseie sua analise nos dados concretos "
+                        "fornecidos e complemente com informacoes da busca web quando "
+                        "disponivel. NAO invente numeros — se nao tiver o dado, nao cite."
+                    )
             else:
                 financials_ctx = result.financials or "Nao disponivel."
 
             prompt = prompts.SYNTHESIS_PROMPT.format(
                 ticker=ticker,
+                nome=result.company_name or ticker,
                 financials_data=financials_ctx,
                 profile=result.profile or "Nao disponivel.",
                 news=result.news or "Nao disponivel.",

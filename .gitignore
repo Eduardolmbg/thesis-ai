@@ -9,6 +9,7 @@ venv/
 
 # Environment
 .env
+.claude
 
 # Output
 output/*.md
