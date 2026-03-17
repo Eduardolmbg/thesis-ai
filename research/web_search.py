@@ -82,39 +82,82 @@ def deduplicate_news(news_results: list[dict], similarity_threshold: float = 0.5
     return deduplicated
 
 
+def _is_relevant(result: dict, ticker: str, company_name: str) -> bool:
+    """Verifica se a notícia menciona o ticker ou a empresa no título ou corpo."""
+    ticker_lower = ticker.lower()
+    # Pegar nome curto da empresa (primeira palavra ou até 2 palavras)
+    company_words = company_name.lower().split()
+    company_short = company_words[0] if company_words else ticker_lower
+
+    text = (result.get("title", "") + " " + result.get("body", "")).lower()
+    return ticker_lower in text or company_short in text
+
+
+def _ddgs_news(query: str, max_results: int, timelimit: str | None) -> list[dict]:
+    """Busca via ddgs.news() tentando region br-pt e sem region como fallback."""
+    for region in ("br-pt", None):
+        try:
+            kwargs: dict = {"max_results": max_results}
+            if timelimit:
+                kwargs["timelimit"] = timelimit
+            if region:
+                kwargs["region"] = region
+            with DDGS() as ddgs:
+                raw = list(ddgs.news(query, **kwargs))
+            if raw:
+                return raw
+        except Exception:
+            continue
+    return []
+
+
+def _ddgs_text(query: str, max_results: int) -> list[dict]:
+    """Busca via ddgs.text() e normaliza para o mesmo formato de news."""
+    for region in ("pt-br", None):
+        try:
+            kwargs: dict = {"max_results": max_results}
+            if region:
+                kwargs["region"] = region
+            with DDGS() as ddgs:
+                raw = list(ddgs.text(query, **kwargs))
+            if raw:
+                return [
+                    {
+                        "title": r.get("title", ""),
+                        "body": r.get("body", ""),
+                        "url": r.get("href", ""),
+                        "date": "",
+                        "source": r.get("href", "").split("/")[2] if r.get("href") else "",
+                    }
+                    for r in raw
+                ]
+        except Exception:
+            continue
+    return []
+
+
 def search_recent_news(ticker: str, company_name: str, max_results: int = 10) -> list[dict]:
-    """Busca notícias recentes (último mês) via ddgs.news() com múltiplas queries."""
+    """Busca notícias recentes com múltiplas queries e filtro de relevância.
+
+    Estratégia:
+    1. ddgs.news() com timelimit="m" (último mês) — filtra por relevância
+    2. ddgs.news() sem timelimit — se news recentes insuficientes
+    3. ddgs.text() — fallback robusto que sempre acha resultados específicos
+    """
     queries = [
         f"{ticker} resultados 2025 2026",
-        f"{company_name} noticias",
-        f"{ticker} dividendos aquisicao guidance",
-        f"{ticker} analise recomendacao",
+        f'"{ticker}" noticias',
+        f"{ticker} dividendos guidance recomendacao",
+        f"{company_name} resultado lucro receita",
     ]
 
     all_results: list[dict] = []
     seen_urls: set[str] = set()
 
-    for query in queries:
-        for region in ("br-pt", None):
-            try:
-                with DDGS() as ddgs:
-                    raw = list(
-                        ddgs.news(
-                            query,
-                            max_results=5,
-                            timelimit="m",
-                            **({"region": region} if region else {}),
-                        )
-                    )
-                if raw:
-                    break
-            except Exception:
-                raw = []
-                continue
-
+    def _add(raw: list[dict]) -> None:
         for r in raw:
             url = r.get("url", "")
-            if url and url not in seen_urls and _is_quality_source(url):
+            if url and url not in seen_urls and _is_quality_source(url) and _is_relevant(r, ticker, company_name):
                 seen_urls.add(url)
                 all_results.append({
                     "title": r.get("title", ""),
@@ -123,6 +166,20 @@ def search_recent_news(ticker: str, company_name: str, max_results: int = 10) ->
                     "date": r.get("date", ""),
                     "source": r.get("source", ""),
                 })
+
+    # Camada 1: news() com timelimit
+    for query in queries:
+        _add(_ddgs_news(query, max_results=5, timelimit="m"))
+
+    # Camada 2: se insuficiente, news() sem timelimit
+    if len(all_results) < 3:
+        for query in queries[:2]:
+            _add(_ddgs_news(query, max_results=5, timelimit=None))
+
+    # Camada 3: fallback text() — sempre acha resultados específicos
+    if len(all_results) < 3:
+        text_query = f"{ticker} {company_name} noticias resultado lucro dividendo"
+        _add(_ddgs_text(text_query, max_results=8))
 
     all_results.sort(key=lambda x: x.get("date", ""), reverse=True)
     all_results = deduplicate_news(all_results)

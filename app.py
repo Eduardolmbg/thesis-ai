@@ -144,7 +144,7 @@ analyze_btn = st.button(
 # ── Chart helper ─────────────────────────────────────────────────────────
 
 def _render_price_chart(ticker: str) -> None:
-    """Render interactive price chart with period selector."""
+    """Render interactive price chart with period selector and optional benchmarks."""
     import plotly.graph_objects as go
 
     PERIOD_LABELS = {
@@ -156,7 +156,8 @@ def _render_price_chart(ticker: str) -> None:
         "5y": "5A",
     }
 
-    col_title, col_period = st.columns([3, 1])
+    # ── Header row: título | CDI checkbox | IBOV checkbox | período ──
+    col_title, col_cdi, col_ibov, col_period = st.columns([3, 0.6, 0.8, 0.8])
     with col_title:
         st.markdown(
             f'<div class="report-card fade-in chart-title-card">'
@@ -164,6 +165,14 @@ def _render_price_chart(ticker: str) -> None:
             f"</div>",
             unsafe_allow_html=True,
         )
+    with col_cdi:
+        st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
+        show_cdi = st.checkbox("CDI", value=False, key=f"cdi_check_{ticker}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with col_ibov:
+        st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
+        show_ibov = st.checkbox("Ibovespa", value=False, key=f"ibov_check_{ticker}")
+        st.markdown('</div>', unsafe_allow_html=True)
     with col_period:
         st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
         period = st.selectbox(
@@ -172,75 +181,197 @@ def _render_price_chart(ticker: str) -> None:
             format_func=lambda x: PERIOD_LABELS[x],
             index=3,
             label_visibility="collapsed",
+            key=f"period_{ticker}",
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
     yahoo = YFinanceClient()
-    hist = yahoo.get_history(ticker, period=period)
+
+    # Histórico do ativo (sempre necessário)
+    hist_key = f"hist_{ticker}_{period}"
+    if hist_key not in st.session_state:
+        st.session_state[hist_key] = yahoo.get_history(ticker, period=period)
+    hist = st.session_state[hist_key]
 
     if hist.empty:
         st.caption("Historico de precos nao disponivel.")
         return
 
-    # Calcular variacao no periodo
-    preco_inicio = float(hist["Close"].iloc[0])
-    preco_fim = float(hist["Close"].iloc[-1])
-    variacao = ((preco_fim - preco_inicio) / preco_inicio) * 100
+    # Benchmarks (cachear por período)
+    ibov_df = None
+    cdi_df = None
 
+    if show_ibov:
+        ibov_key = f"ibov_{period}"
+        if ibov_key not in st.session_state:
+            st.session_state[ibov_key] = yahoo.get_benchmark_history("^BVSP", period)
+        ibov_df = st.session_state[ibov_key]
+
+    if show_cdi:
+        cdi_key = f"cdi_{period}"
+        if cdi_key not in st.session_state:
+            st.session_state[cdi_key] = yahoo.get_cdi_history(period)
+        cdi_df = st.session_state[cdi_key]
+
+    # ── Montar figura ────────────────────────────────────────────────
     fig = go.Figure()
+    comparative = show_cdi or show_ibov
+    cdi_aligned = None  # inicializar para uso posterior no resumo
 
-    fig.add_trace(go.Scatter(
-        x=hist.index,
-        y=hist["Close"],
-        mode="lines",
-        name="Fechamento",
-        line=dict(color="#3b82f6", width=2),
-        fill="tozeroy",
-        fillcolor="rgba(59, 130, 246, 0.08)",
-        hovertemplate="R$ %{y:,.2f}<extra></extra>",
-    ))
+    if comparative:
+        # Modo comparativo: tudo em variação % desde o início
+        ativo_pct = ((hist["Close"] / hist["Close"].iloc[0]) - 1) * 100
+        variacao = float(ativo_pct.iloc[-1])
 
-    fig.update_layout(
-        title=None,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="JetBrains Mono, monospace", color="#e4e4e7"),
-        xaxis=dict(
-            showgrid=False,
+        fig.add_trace(go.Scatter(
+            x=ativo_pct.index,
+            y=ativo_pct.values,
+            mode="lines",
+            name=ticker,
+            line=dict(color="#3b82f6", width=2.5),
+            hovertemplate=f"{ticker}: " + "%{y:.1f}%<extra></extra>",
+        ))
+
+        if show_ibov and ibov_df is not None and not ibov_df.empty:
+            ibov_pct = ((ibov_df["Close"] / ibov_df["Close"].iloc[0]) - 1) * 100
+            ibov_pct = ibov_pct.reindex(ativo_pct.index, method="ffill")
+            fig.add_trace(go.Scatter(
+                x=ibov_pct.index,
+                y=ibov_pct.values,
+                mode="lines",
+                name="Ibovespa",
+                line=dict(color="#f59e0b", width=1.5, dash="dot"),
+                hovertemplate="Ibovespa: %{y:.1f}%<extra></extra>",
+            ))
+
+        if show_cdi and cdi_df is not None and not cdi_df.empty:
+            import pandas as _pd
+            cdi_series = cdi_df["cdi_acumulado"].copy()
+
+            # Normalizar CDI para índice date-only (sem hora, sem timezone)
+            cdi_series.index = _pd.to_datetime(cdi_series.index).normalize().tz_localize(None)
+
+            # Normalizar índice do ativo para date-only também
+            ativo_dates = _pd.to_datetime(ativo_pct.index).normalize().tz_localize(None)
+
+            # Subtrair valor do CDI no primeiro dia do ativo (base = 0%)
+            first_date = ativo_dates[0]
+            cdi_base = cdi_series.asof(first_date)
+            # Se asof retornar NaN (data antes do CDI), usar o primeiro valor disponível
+            if _pd.isna(cdi_base):
+                cdi_base = cdi_series.iloc[0]
+            cdi_aligned = cdi_series - cdi_base
+
+            # Reindex para os mesmos dias do ativo, preenchendo gaps com ffill
+            cdi_aligned = cdi_aligned.reindex(ativo_dates, method="ffill")
+            cdi_aligned.index = ativo_pct.index  # restaurar índice original para o plot
+            fig.add_trace(go.Scatter(
+                x=cdi_aligned.index,
+                y=cdi_aligned.values,
+                mode="lines",
+                name="CDI",
+                line=dict(color="#10b981", width=1.5, dash="dash"),
+                hovertemplate="CDI: %{y:.1f}%<extra></extra>",
+            ))
+
+        fig.add_hline(y=0, line_color="rgba(255,255,255,0.12)", line_width=1)
+
+        yaxis_cfg = dict(
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.05)",
             showline=False,
             color="#71717a",
             tickfont=dict(size=11),
-        ),
-        yaxis=dict(
+            ticksuffix="%",
+            zeroline=False,
+        )
+    else:
+        # Modo simples: preço em R$ com fill
+        variacao = float(((hist["Close"].iloc[-1] / hist["Close"].iloc[0]) - 1) * 100)
+
+        fig.add_trace(go.Scatter(
+            x=hist.index,
+            y=hist["Close"],
+            mode="lines",
+            name=ticker,
+            line=dict(color="#3b82f6", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(59, 130, 246, 0.08)",
+            hovertemplate="R$ %{y:,.2f}<extra></extra>",
+        ))
+
+        yaxis_cfg = dict(
             showgrid=True,
             gridcolor="rgba(255,255,255,0.05)",
             showline=False,
             color="#71717a",
             tickfont=dict(size=11),
             tickprefix="R$ ",
-        ),
+        )
+
+    fig.update_layout(
+        title=None,
+        title_text="",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="JetBrains Mono, monospace", color="#e4e4e7"),
+        xaxis=dict(showgrid=False, showline=False, color="#71717a", tickfont=dict(size=11)),
+        yaxis=yaxis_cfg,
         margin=dict(l=0, r=0, t=10, b=0),
-        height=350,
+        height=380,
         hovermode="x unified",
-        hoverlabel=dict(
-            bgcolor="#1e1e2e",
-            font_size=12,
-            font_family="JetBrains Mono",
+        hoverlabel=dict(bgcolor="#1e1e2e", font_size=12, font_family="JetBrains Mono"),
+        showlegend=comparative,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11, color="#a1a1aa"),
+            bgcolor="rgba(0,0,0,0)",
         ),
-        showlegend=False,
     )
 
+    st.markdown('<div style="margin-top:10px;"></div>', unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Variacao no periodo
-    cor = "#10b981" if variacao >= 0 else "#ef4444"
-    sinal = "+" if variacao >= 0 else ""
-    st.markdown(
-        f'<p style="text-align:right;color:{cor};font-size:13px;'
-        f'font-family:JetBrains Mono,monospace;margin-top:-10px;">'
-        f'{sinal}{variacao:.1f}% no periodo</p>',
-        unsafe_allow_html=True,
-    )
+    # ── Resumo de performance ────────────────────────────────────────
+    if comparative:
+        perf_parts = []
+
+        cor = "#10b981" if variacao >= 0 else "#ef4444"
+        sinal = "+" if variacao >= 0 else ""
+        perf_parts.append(
+            f'<span style="color:{cor};">{ticker}: {sinal}{variacao:.1f}%</span>'
+        )
+
+        if show_ibov and ibov_df is not None and not ibov_df.empty:
+            ibov_var = float(((ibov_df["Close"].iloc[-1] / ibov_df["Close"].iloc[0]) - 1) * 100)
+            cor_i = "#10b981" if ibov_var >= 0 else "#ef4444"
+            sinal_i = "+" if ibov_var >= 0 else ""
+            perf_parts.append(
+                f'<span style="color:{cor_i};">IBOV: {sinal_i}{ibov_var:.1f}%</span>'
+            )
+
+        if show_cdi and cdi_aligned is not None and not cdi_aligned.dropna().empty:
+            cdi_var = float(cdi_aligned.dropna().iloc[-1])
+            perf_parts.append(f'<span style="color:#10b981;">CDI: +{cdi_var:.1f}%</span>')
+
+        st.markdown(
+            f'<p style="text-align:right;font-size:13px;font-family:JetBrains Mono,monospace;'
+            f'margin-top:-10px;">{" &nbsp;|&nbsp; ".join(perf_parts)}</p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        cor = "#10b981" if variacao >= 0 else "#ef4444"
+        sinal = "+" if variacao >= 0 else ""
+        st.markdown(
+            f'<p style="text-align:right;color:{cor};font-size:13px;'
+            f'font-family:JetBrains Mono,monospace;margin-top:-10px;">'
+            f'{sinal}{variacao:.1f}% no periodo</p>',
+            unsafe_allow_html=True,
+        )
 
 # ── Analysis flow ────────────────────────────────────────────────────────
 
@@ -384,56 +515,36 @@ if "last_result" in st.session_state:
     _render_price_chart(ticker)
 
     # ── Section 1: Company profile ───────────────────────────────────────
-    st.markdown(
-        f'<div class="report-card fade-in">'
-        f'<h2>{icon("building", color=COLORS["accent"])} Visao Geral da Empresa</h2>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    if result.profile:
-        st.markdown(result.profile)
-    else:
-        st.caption("Informacao nao disponivel.")
+    with st.expander("Visao Geral da Empresa", expanded=True):
+        if result.profile:
+            st.markdown(result.profile)
+        else:
+            st.caption("Informacao nao disponivel.")
 
     # ── Section 2: Financial indicators ──────────────────────────────────
-    st.markdown(
-        f'<div class="report-card fade-in">'
-        f'<h2>{icon("bar_chart", color=COLORS["accent"])} Indicadores Financeiros</h2>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    if result.financials:
-        st.markdown(result.financials, unsafe_allow_html=True)
-    else:
-        st.caption("Informacao nao disponivel.")
+    with st.expander("Indicadores Financeiros", expanded=True):
+        if result.financials:
+            st.markdown(result.financials, unsafe_allow_html=True)
+        else:
+            st.caption("Informacao nao disponivel.")
 
     # ── Section 3: News with badges ──────────────────────────────────────
-    st.markdown(
-        f'<div class="report-card fade-in">'
-        f'<h2>{icon("newspaper", color=COLORS["accent"])} Noticias Recentes</h2>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    if result.news:
-        news_html = render_news_with_badges(result.news)
-        st.markdown(news_html, unsafe_allow_html=True)
-    else:
-        st.caption("Informacao nao disponivel.")
+    with st.expander("Noticias Recentes", expanded=True):
+        if result.news:
+            news_html = render_news_with_badges(result.news)
+            st.markdown(news_html, unsafe_allow_html=True)
+        else:
+            st.caption("Informacao nao disponivel.")
 
     # ── Section 4: Synthesis with bias badge ─────────────────────────────
-    st.markdown(
-        f'<div class="report-card fade-in">'
-        f'<h2>{icon("brain", color=COLORS["accent"])} Sintese de Investimento</h2>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    if result.synthesis:
-        bias = parse_bias(result.synthesis)
-        badge_html = render_bias_badge(bias)
-        st.markdown(badge_html, unsafe_allow_html=True)
-        st.markdown(result.synthesis, unsafe_allow_html=True)
-    else:
-        st.caption("Informacao nao disponivel.")
+    with st.expander("Sintese de Investimento", expanded=True):
+        if result.synthesis:
+            bias = parse_bias(result.synthesis)
+            badge_html = render_bias_badge(bias)
+            st.markdown(badge_html, unsafe_allow_html=True)
+            st.markdown(result.synthesis, unsafe_allow_html=True)
+        else:
+            st.caption("Informacao nao disponivel.")
 
     # ── Export buttons ───────────────────────────────────────────────────
     st.divider()

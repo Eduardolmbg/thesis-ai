@@ -123,6 +123,48 @@ class YFinanceClient:
             logger.exception("Erro yfinance para %s", yahoo_ticker)
             return {}
 
+    def get_benchmark_history(self, benchmark: str, period: str = "1y") -> pd.DataFrame:
+        """Busca histórico de um benchmark (ex: '^BVSP' para Ibovespa)."""
+        try:
+            stock = yf.Ticker(benchmark)
+            hist = stock.history(period=period)
+            return hist
+        except Exception:
+            logger.exception("Erro ao buscar benchmark %s", benchmark)
+            return pd.DataFrame()
+
+    def get_cdi_history(self, period: str = "1y") -> pd.DataFrame:
+        """Busca CDI acumulado via API do Banco Central (SGS série 12)."""
+        import requests
+        from datetime import timedelta
+
+        period_days = {
+            "1mo": 30, "3mo": 90, "6mo": 180,
+            "1y": 365, "2y": 730, "5y": 1825,
+        }
+        # Buffer de 30 dias extra para garantir cobertura do primeiro dia do ativo
+        days = period_days.get(period, 365) + 30
+        data_inicio = (pd.Timestamp.now() - timedelta(days=days)).strftime("%d/%m/%Y")
+        data_fim = pd.Timestamp.now().strftime("%d/%m/%Y")
+
+        url = (
+            "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados"
+            f"?formato=json&dataInicial={data_inicio}&dataFinal={data_fim}"
+        )
+        try:
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            df = pd.DataFrame(data)
+            df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
+            df["valor"] = df["valor"].str.replace(",", ".").astype(float)
+            df = df.set_index("data").sort_index()
+            df["cdi_acumulado"] = ((1 + df["valor"] / 100).cumprod() - 1) * 100
+            return df
+        except Exception:
+            logger.exception("Erro ao buscar CDI do Banco Central")
+            return pd.DataFrame()
+
     def get_history(self, ticker: str, period: str = "1y") -> pd.DataFrame:
         """Busca historico de precos.
 

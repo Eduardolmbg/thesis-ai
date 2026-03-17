@@ -336,6 +336,12 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {
     border-radius: 1px;
 }
 
+/* ── Esconder links âncora dos headings ─────────────────── */
+h1 a, h2 a, h3 a, h4 a,
+.stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a {
+    display: none !important;
+}
+
 /* ── Logo ───────────────────────────────────────────────── */
 .logo-title {
     font-family: 'JetBrains Mono', monospace !important;
