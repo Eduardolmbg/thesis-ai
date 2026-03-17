@@ -85,6 +85,13 @@ def format_multiple(value: Any, suffix: str = "x") -> str:
     return f"{float(value):.1f}{suffix}"
 
 
+def format_debt_equity(value: Any) -> str:
+    """Formata D/E como multiplicador. yfinance retorna em %, ex: 101.6 -> 1.02x."""
+    if not _is_number(value):
+        return "N/D"
+    return f"{float(value) / 100:.2f}x"
+
+
 def build_indicators_table(data: dict[str, Any]) -> str:
     """Monta tabela Markdown de indicadores a partir dos dados estruturados.
 
@@ -98,7 +105,7 @@ def build_indicators_table(data: dict[str, Any]) -> str:
         ("P/VP", format_multiple(data.get("pvp"))),
         ("EV/EBITDA", format_multiple(data.get("ev_ebitda"))),
         ("LPA", format_currency(data.get("lpa")) if _is_number(data.get("lpa")) else "N/D"),
-        ("Dividend Yield", format_percent(data.get("dividend_yield"))),
+        ("Dividend Yield (12m)", format_percent(data.get("dividend_yield"))),
         ("Payout Ratio", format_percent(data.get("payout_ratio")) if _is_number(data.get("payout_ratio")) else "N/D"),
         ("ROE", format_percent(data.get("roe"))),
         ("ROA", format_percent(data.get("roa"))),
@@ -106,16 +113,18 @@ def build_indicators_table(data: dict[str, Any]) -> str:
         ("Margem Operacional", format_percent(data.get("margem_operacional")) if _is_number(data.get("margem_operacional")) else "N/D"),
         ("Margem Liquida", format_percent(data.get("margem_lucro"))),
         ("Margem Bruta", format_percent(data.get("margem_bruta"))),
-        ("Div. Liq./Equity", format_percent(data.get("divida_equity"), is_ratio=False) if _is_number(data.get("divida_equity")) else "N/D"),
-        ("Receita Total", format_currency(data.get("receita_total"))),
-        ("EBITDA", format_currency(data.get("ebitda"))),
-        ("Lucro Bruto", format_currency(data.get("lucro_bruto"))),
-        ("Lucro Liquido", format_currency(data.get("lucro_liquido")) if _is_number(data.get("lucro_liquido")) else "N/D"),
-        ("Free Cash Flow", format_currency(data.get("free_cashflow")) if _is_number(data.get("free_cashflow")) else "N/D"),
+        ("Div./Equity", format_debt_equity(data.get("divida_equity")) if _is_number(data.get("divida_equity")) else "N/D"),
+        ("Receita Total (TTM)", format_currency(data.get("receita_total"))),
+        ("EBITDA (TTM)", format_currency(data.get("ebitda"))),
+        ("Lucro Bruto (TTM)", format_currency(data.get("lucro_bruto"))),
+        ("Lucro Liquido (TTM)", format_currency(data.get("lucro_liquido")) if _is_number(data.get("lucro_liquido")) else "N/D"),
+        ("Free Cash Flow (TTM)", format_currency(data.get("free_cashflow")) if _is_number(data.get("free_cashflow")) else "N/D"),
+        ("CAPEX (TTM)", format_market_cap(data.get("capex")) if _is_number(data.get("capex")) else "N/D"),
+        ("CAPEX/Receita", format_multiple(data.get("capex_receita")) if _is_number(data.get("capex_receita")) else "N/D"),
         ("Caixa Total", format_currency(data.get("caixa_total"))),
         ("Divida Total", format_currency(data.get("divida_total"))),
-        ("Cresc. Receita", format_percent(data.get("crescimento_receita"))),
-        ("Cresc. Lucro", format_percent(data.get("crescimento_lucro"))),
+        ("Cresc. Receita (YoY)", format_percent(data.get("crescimento_receita"))),
+        ("Cresc. Lucro (YoY)", format_percent(data.get("crescimento_lucro"))),
         ("Max. 52 semanas", format_currency(data.get("max_52sem")) if _is_number(data.get("max_52sem")) else "N/D"),
         ("Min. 52 semanas", format_currency(data.get("min_52sem")) if _is_number(data.get("min_52sem")) else "N/D"),
     ]
@@ -150,7 +159,7 @@ def structured_data_summary(data: dict[str, Any]) -> str:
         ("Margem EBITDA", "margem_ebitda", lambda v: format_percent(v)),
         ("Margem Operacional", "margem_operacional", lambda v: format_percent(v)),
         ("Margem Liquida", "margem_lucro", lambda v: format_percent(v)),
-        ("Div./Equity", "divida_equity", lambda v: format_percent(v, is_ratio=False)),
+        ("Div./Equity", "divida_equity", format_debt_equity),
         ("Receita Total", "receita_total", format_currency),
         ("EBITDA", "ebitda", format_currency),
         ("Lucro Liquido", "lucro_liquido", format_currency),
@@ -159,6 +168,8 @@ def structured_data_summary(data: dict[str, Any]) -> str:
         ("Divida Total", "divida_total", format_currency),
         ("Cresc. Receita", "crescimento_receita", lambda v: format_percent(v)),
         ("Cresc. Lucro", "crescimento_lucro", lambda v: format_percent(v)),
+        ("CAPEX (TTM)", "capex", format_market_cap),
+        ("CAPEX/Receita", "capex_receita", lambda v: format_multiple(v)),
     ]
     for label, key, fmt in mapping:
         val = data.get(key)

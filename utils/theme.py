@@ -238,6 +238,17 @@ tbody tr:hover td {
     height: 100%%;
     padding-top: 4px;
 }
+[data-testid="stCheckbox"] {
+    background: transparent !important;
+    padding: 0 !important;
+}
+[data-testid="stCheckbox"] label {
+    color: #a1a1aa !important;
+    font-size: 0.85rem !important;
+}
+[data-testid="stSelectbox"] > div {
+    background: transparent !important;
+}
 .report-card h2 {
     margin-top: 0 !important;
     margin-bottom: 0 !important;

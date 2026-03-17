@@ -164,7 +164,7 @@ def _extract_yfinance(quote: dict[str, Any]) -> dict[str, Any]:
             return "N/D"
         return val
 
-    return {
+    data = {
         "_data_level": quote.get("_data_level", DATA_LEVEL_FULL),
         "_data_source": "yfinance",
         "nome": quote.get("longName") or "N/D",
@@ -206,7 +206,15 @@ def _extract_yfinance(quote: dict[str, Any]) -> dict[str, Any]:
         "lucro_liquido_historico": quote.get("netIncomeHistory") or {},
         "crescimento_receita": _v(quote.get("revenueGrowth")),
         "crescimento_lucro": _v(quote.get("earningsGrowth")),
+        "capex": _v(quote.get("capitalExpenditure")),
     }
+    capex = data["capex"]
+    receita = data["receita_total"]
+    if (isinstance(capex, (int, float)) and isinstance(receita, (int, float)) and receita > 0):
+        data["capex_receita"] = capex / receita
+    else:
+        data["capex_receita"] = "N/D"
+    return data
 
 
 def _extract_brapi(quote: dict[str, Any]) -> dict[str, Any]:

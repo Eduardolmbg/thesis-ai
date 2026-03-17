@@ -54,6 +54,20 @@ class YFinanceClient:
             except Exception:
                 logger.debug("Nao foi possivel buscar DRE para %s", yahoo_ticker)
 
+            # Buscar CAPEX do fluxo de caixa
+            capex_value = None
+            try:
+                cashflow = stock.cashflow
+                if cashflow is not None and not cashflow.empty:
+                    for field_name in ["Capital Expenditure", "capitalExpenditure", "Capital Expenditures"]:
+                        if field_name in cashflow.index:
+                            raw = cashflow.loc[field_name].iloc[0]
+                            if raw is not None and _is_number(raw) and not pd.isna(raw):
+                                capex_value = abs(float(raw))
+                            break
+            except Exception:
+                logger.debug("Nao foi possivel buscar CAPEX para %s", yahoo_ticker)
+
             return {
                 # Identificacao
                 "symbol": ticker.upper().replace(".SA", ""),
@@ -114,6 +128,8 @@ class YFinanceClient:
                 else None,
                 "dividendRate": info.get("dividendRate"),
                 "payoutRatio": info.get("payoutRatio"),
+                # CAPEX (do fluxo de caixa, valor absoluto)
+                "capitalExpenditure": capex_value,
                 # Meta
                 "_data_source": "yfinance",
                 "_data_level": "full",
@@ -183,6 +199,39 @@ class YFinanceClient:
         except Exception:
             logger.exception("Erro ao buscar historico para %s", yahoo_ticker)
             return pd.DataFrame()
+
+    def get_capex(self, ticker: str) -> dict:
+        """Busca CAPEX do fluxo de caixa anual via yfinance."""
+        yahoo_ticker = self._normalize_ticker(ticker)
+        try:
+            stock = yf.Ticker(yahoo_ticker)
+            cashflow = stock.cashflow
+            if cashflow is None or cashflow.empty:
+                return {}
+            for field_name in ["Capital Expenditure", "capitalExpenditure", "Capital Expenditures"]:
+                if field_name in cashflow.index:
+                    raw = cashflow.loc[field_name].iloc[0]
+                    if raw is not None and _is_number(raw) and not pd.isna(raw):
+                        return {"capex": abs(float(raw))}
+                    break
+        except Exception:
+            logger.debug("Nao foi possivel buscar CAPEX para %s", yahoo_ticker)
+        return {}
+
+    def get_peers_data(self, tickers: list[str]) -> list[dict]:
+        """Busca dados financeiros de múltiplos tickers para comparação setorial."""
+        peers_data = []
+        for ticker in tickers:
+            try:
+                data = self.get_quote(ticker)
+                if data and data.get("regularMarketPrice"):
+                    market_time = data.get("regularMarketTime")
+                    if market_time:
+                        data["_reference_date"] = market_time
+                    peers_data.append(data)
+            except Exception:
+                continue
+        return peers_data
 
     @staticmethod
     def _normalize_ticker(ticker: str) -> str:

@@ -124,3 +124,19 @@ SYNTHESIS_PROMPT = (
     "- Escreva em portugues\n"
     "- Tom: profissional, direto, analitico"
 )
+
+# ── Etapa 5: Comparacao Setorial ────────────────────────────────────────
+
+PEER_COMPARISON_PROMPT = (
+    "Voce e um analista de equity research senior. Analise o posicionamento de "
+    "{ticker} em relacao aos seus peers do setor.\n\n"
+    "TABELA COMPARATIVA:\n{tabela}\n\n"
+    "MEDIANA DO SETOR:\n{medianas}\n\n"
+    "Gere uma analise CONCISA (maximo 1 paragrafo de 4-5 frases) respondendo:\n"
+    "1. A empresa esta cara ou barata em relacao aos peers? (P/L e EV/EBITDA vs mediana)\n"
+    "2. A rentabilidade esta acima ou abaixo do setor? (ROE e margens vs mediana)\n"
+    "3. Algum indicador esta significativamente fora da media? (outlier positivo ou negativo)\n"
+    "4. Conclusao em 1 frase: o valuation atual e justificado pela qualidade dos indicadores?\n\n"
+    "Use NUMEROS CONCRETOS da tabela. Seja direto e analitico.\n"
+    "NAO use emojis. Escreva em portugues."
+)

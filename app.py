@@ -12,6 +12,8 @@ from providers import get_provider
 from agents.stock_analyst import StockAnalyst
 from reports.generator import generate_report, save_report, report_to_html
 from research.yahoo_finance import YFinanceClient
+from research.peers import get_peers
+from agents.prompts import PEER_COMPARISON_PROMPT, SYSTEM_PROMPT
 from utils.formatting import validate_ticker
 from utils.theme import (
     inject_css,
@@ -141,6 +143,294 @@ analyze_btn = st.button(
     use_container_width=True,
 )
 
+# ── Peer comparison helpers ──────────────────────────────────────────────
+
+_PEER_METRICS = [
+    {"key": "regularMarketPrice", "label": "Preco",          "format": "price",      "lower_is_better": False},
+    {"key": "marketCap",          "label": "Market Cap",     "format": "market_cap", "lower_is_better": False},
+    {"key": "priceEarnings",      "label": "P/L",            "format": "multiple",   "lower_is_better": True},
+    {"key": "enterpriseToEbitda", "label": "EV/EBITDA",      "format": "multiple",   "lower_is_better": True},
+    {"key": "priceToBook",        "label": "P/VP",           "format": "multiple",   "lower_is_better": True},
+    {"key": "returnOnEquity",     "label": "ROE",            "format": "percent",    "lower_is_better": False},
+    {"key": "ebitdaMargins",      "label": "Margem EBITDA",  "format": "percent",    "lower_is_better": False},
+    {"key": "profitMargins",      "label": "Margem Liquida", "format": "percent",    "lower_is_better": False},
+    {"key": "dividendYield",      "label": "Div. Yield",     "format": "percent",    "lower_is_better": False},
+    {"key": "debtToEquity",       "label": "Div./Equity",    "format": "debt_equity","lower_is_better": True},
+    {"key": "revenueGrowth",      "label": "Cresc. Receita", "format": "percent",    "lower_is_better": False},
+    {"key": "capex_receita",      "label": "CAPEX/Receita",  "format": "multiple",   "lower_is_better": None},
+]
+
+
+def _fmt_metric(val: object, fmt: str) -> str:
+    """Formata valor de métrica para célula da tabela."""
+    if val is None or not isinstance(val, (int, float)):
+        return '<span style="color:#3f3f46;">N/D</span>'
+    if fmt == "price":
+        return f"R$ {val:.2f}"
+    if fmt == "market_cap":
+        if val >= 1e12:
+            return f"R$ {val/1e12:.1f}T"
+        if val >= 1e9:
+            return f"R$ {val/1e9:.1f}B"
+        if val >= 1e6:
+            return f"R$ {val/1e6:.0f}M"
+        return f"R$ {val:,.0f}"
+    if fmt == "multiple":
+        return f"{val:.1f}x"
+    if fmt == "percent":
+        return f"{val * 100:.1f}%"
+    if fmt == "debt_equity":
+        # yfinance retorna debtToEquity em %, converter para multiplicador
+        return f"{val / 100:.2f}x"
+    return f"{val:.2f}"
+
+
+def _peer_medians(companies: list[dict]) -> dict[str, float]:
+    """Calcula medianas de cada métrica entre todos os peers + empresa principal."""
+    medians: dict[str, float] = {}
+    for m in _PEER_METRICS:
+        vals = sorted(
+            v for c in companies
+            if isinstance(v := c.get(m["key"]), (int, float))
+        )
+        if vals:
+            mid = len(vals) // 2
+            medians[m["key"]] = (vals[mid - 1] + vals[mid]) / 2 if len(vals) % 2 == 0 else vals[mid]
+    return medians
+
+
+def _render_peer_table(main_ticker: str, all_companies: list[dict]) -> None:
+    """Renderiza tabela comparativa de peers como HTML."""
+    medians = _peer_medians(all_companies)
+
+    # ── Header ───────────────────────────────────────────────────────────
+    th_base = "padding:10px 14px;font-size:12px;font-weight:600;white-space:nowrap;"
+    header_cells = f'<th style="{th_base}text-align:left;color:#71717a;">Indicador</th>'
+    for c in all_companies:
+        sym = c.get("symbol", "").upper()
+        is_main = sym == main_ticker.upper()
+        bg = "background:#1d4ed8;" if is_main else "background:#18181b;"
+        header_cells += (
+            f'<th style="{th_base}text-align:center;{bg}color:#f4f4f5;">'
+            f'{sym}</th>'
+        )
+    header_cells += f'<th style="{th_base}text-align:center;color:#52525b;font-style:italic;">Mediana</th>'
+
+    # ── Rows ─────────────────────────────────────────────────────────────
+    rows_html = ""
+    for i, m in enumerate(_PEER_METRICS):
+        bg_row = "rgba(255,255,255,0.025)" if i % 2 == 0 else "transparent"
+        td_base = f"padding:9px 14px;background:{bg_row};white-space:nowrap;"
+
+        row = (
+            f'<td style="{td_base}color:#a1a1aa;font-size:13px;">'
+            f'{m["label"]}</td>'
+        )
+
+        median_val = medians.get(m["key"])
+        for c in all_companies:
+            val = c.get(m["key"])
+            sym = c.get("symbol", "").upper()
+            is_main = sym == main_ticker.upper()
+            formatted = _fmt_metric(val, m["format"])
+
+            color = "#e4e4e7"
+            if (m["lower_is_better"] is not None
+                    and isinstance(val, (int, float))
+                    and isinstance(median_val, float)):
+                better = val < median_val if m["lower_is_better"] else val > median_val
+                worse  = val > median_val * 1.2 if m["lower_is_better"] else val < median_val * 0.8
+                if better:
+                    color = "#10b981"
+                elif worse:
+                    color = "#ef4444"
+
+            fw = "700" if is_main else "400"
+            row += (
+                f'<td style="{td_base}text-align:center;color:{color};'
+                f'font-family:JetBrains Mono,monospace;font-size:13px;font-weight:{fw};">'
+                f'{formatted}</td>'
+            )
+
+        med_fmt = _fmt_metric(median_val, m["format"])
+        row += (
+            f'<td style="{td_base}text-align:center;color:#52525b;'
+            f'font-family:JetBrains Mono,monospace;font-size:13px;font-style:italic;">'
+            f'{med_fmt}</td>'
+        )
+        rows_html += f"<tr>{row}</tr>"
+
+    html = (
+        '<div style="overflow-x:auto;margin:16px 0;">'
+        '<table style="width:100%;border-collapse:collapse;'
+        'border:1px solid #1e1e2e;border-radius:8px;overflow:hidden;">'
+        f'<thead><tr style="background:#12121a;border-bottom:2px solid #1e1e2e;">'
+        f'{header_cells}</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        '</table></div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def _format_comparison_for_llm(main_ticker: str, all_companies: list[dict]) -> tuple[str, str]:
+    """Retorna (tabela_txt, medianas_txt) para o prompt do LLM."""
+    medians = _peer_medians(all_companies)
+
+    # Tabela em texto
+    cols = ["Indicador"] + [c.get("symbol", "?") for c in all_companies]
+    lines = [" | ".join(cols)]
+    lines.append(" | ".join(["---"] * len(cols)))
+    for m in _PEER_METRICS:
+        row = [m["label"]]
+        for c in all_companies:
+            row.append(_fmt_metric(c.get(m["key"]), m["format"]).replace('<span style="color:#3f3f46;">', "").replace("</span>", ""))
+        lines.append(" | ".join(row))
+    table_txt = "\n".join(lines)
+
+    # Medianas
+    _nd_span = '<span style="color:#3f3f46;">'
+    med_lines = []
+    for m in _PEER_METRICS:
+        val = medians.get(m["key"])
+        formatted = _fmt_metric(val, m["format"]).replace(_nd_span, "").replace("</span>", "")
+        med_lines.append(f"- {m['label']}: {formatted}")
+    medianas_txt = "\n".join(med_lines)
+
+    return table_txt, medianas_txt
+
+
+def _get_peers_auto(ticker: str, company_name: str, sector: str, industry: str, provider) -> list[str]:
+    """Usa o LLM para identificar peers quando não estão no mapeamento hardcoded."""
+    import re
+    prompt = (
+        f"Identifique os 4-5 principais concorrentes de {company_name} ({ticker}) listados na B3.\n\n"
+        f"Setor: {sector}\nIndustria: {industry}\n\n"
+        "Responda APENAS com os tickers da B3 separados por virgula, nada mais.\n"
+        "Exemplo: ITUB4, BBDC4, BBAS3, SANB11"
+    )
+    try:
+        raw = provider.generate(prompt) or ""
+        # Regex extrai padrões de ticker brasileiro: 4 letras + 1-2 dígitos
+        found = re.findall(r'\b([A-Z]{4}\d{1,2})\b', raw.upper())
+        return [t for t in dict.fromkeys(found) if t != ticker.upper()][:5]
+    except Exception:
+        return []
+
+
+def _render_peer_comparison_section(ticker: str, result_brapi_data: dict, provider) -> None:
+    """Renderiza a seção de Comparação Setorial (chamada dentro de um expander)."""
+    sector = result_brapi_data.get("setor", "") if result_brapi_data else ""
+    industry = result_brapi_data.get("industria", "") if result_brapi_data else ""
+    company_name = result_brapi_data.get("nome", ticker) if result_brapi_data else ticker
+
+    # 1. Hardcoded (mais confiável)
+    peers_list = get_peers(ticker)
+    peers_source = "curado"
+
+    # 2. Fallback via LLM (cacheado por sessão)
+    if not peers_list:
+        auto_key = f"peers_auto_{ticker}"
+        if auto_key not in st.session_state:
+            with st.spinner("Identificando peers via IA..."):
+                st.session_state[auto_key] = _get_peers_auto(
+                    ticker, company_name, sector, industry, provider
+                )
+        peers_list = st.session_state[auto_key]
+        peers_source = "ia"
+
+    # Indicador de fonte
+    source_label = (
+        "Peers: mapeamento curado"
+        if peers_source == "curado"
+        else "Peers: sugeridos por IA (edite se necessario)"
+    )
+    st.markdown(
+        f'<p style="color:#52525b;font-size:11px;margin:0 0 6px 0;">{source_label}</p>',
+        unsafe_allow_html=True,
+    )
+
+    # Pré-popular session_state explicitamente — Streamlit usa session_state como
+    # fonte de verdade para widgets com key=; o parâmetro value= é ignorado se a
+    # key já existir. Só definimos na primeira vez para não sobrescrever edições do usuário.
+    input_key = f"peers_input_{ticker}"
+    if input_key not in st.session_state:
+        st.session_state[input_key] = ", ".join(peers_list)
+
+    peers_input = st.text_input(
+        "Peers para comparacao (separados por virgula)",
+        placeholder="Ex: ITUB4, BBDC4, BBAS3, SANB11",
+        key=input_key,
+    )
+    edited_peers = [p.strip().upper() for p in peers_input.split(",") if p.strip()][:5]
+
+    if st.button("Carregar Comparacao", key=f"load_peers_{ticker}", type="primary"):
+        if not edited_peers:
+            st.warning("Informe ao menos um peer para comparar.")
+            return
+
+        with st.spinner("Buscando dados dos peers..."):
+            yahoo = YFinanceClient()
+
+            main_key = f"peer_main_{ticker}"
+            if main_key not in st.session_state:
+                st.session_state[main_key] = yahoo.get_quote(ticker)
+            main_data = st.session_state[main_key]
+
+            if not main_data or not main_data.get("regularMarketPrice"):
+                st.error("Nao foi possivel obter dados do ticker principal.")
+                return
+
+            peers_key = f"peer_data_{ticker}_{'_'.join(edited_peers)}"
+            if peers_key not in st.session_state:
+                st.session_state[peers_key] = yahoo.get_peers_data(edited_peers)
+            peers_data = st.session_state[peers_key]
+
+            if not peers_data:
+                st.warning("Nao foi possivel obter dados dos peers selecionados.")
+                return
+
+            # Enriquecer cada empresa com capex_receita calculado
+        def _enrich(d: dict) -> dict:
+            capex = d.get("capitalExpenditure")
+            rev = d.get("totalRevenue")
+            if isinstance(capex, (int, float)) and isinstance(rev, (int, float)) and rev > 0:
+                d["capex_receita"] = capex / rev
+            return d
+
+        all_companies = [_enrich(main_data)] + [_enrich(p) for p in peers_data]
+
+        # Nota de referência TTM
+        st.markdown(
+            '<p style="color:#52525b;font-size:12px;font-style:italic;margin:4px 0 12px 0;">'
+            'Indicadores fundamentalistas: TTM (ultimos 12 meses) · Fonte: Yahoo Finance</p>',
+            unsafe_allow_html=True,
+        )
+
+        _render_peer_table(ticker, all_companies)
+
+        st.markdown(
+            '<p style="font-size:11px;color:#52525b;margin-top:4px;">'
+            '<span style="color:#10b981;">&#9632;</span> Acima da mediana do setor &nbsp;'
+            '<span style="color:#ef4444;">&#9632;</span> Abaixo da mediana do setor &nbsp;'
+            'Coluna em azul = empresa analisada</p>',
+            unsafe_allow_html=True,
+        )
+
+        with st.spinner("Gerando analise comparativa..."):
+            table_txt, medianas_txt = _format_comparison_for_llm(ticker, all_companies)
+            prompt = PEER_COMPARISON_PROMPT.format(
+                ticker=ticker,
+                tabela=table_txt,
+                medianas=medianas_txt,
+            )
+            try:
+                analysis = provider.generate(prompt, system_prompt=SYSTEM_PROMPT)
+                st.markdown("**Analise Comparativa**")
+                st.markdown(analysis)
+            except Exception:
+                st.warning("Nao foi possivel gerar a analise comparativa.")
+
+
 # ── Chart helper ─────────────────────────────────────────────────────────
 
 def _render_price_chart(ticker: str) -> None:
@@ -157,33 +447,28 @@ def _render_price_chart(ticker: str) -> None:
     }
 
     # ── Header row: título | CDI checkbox | IBOV checkbox | período ──
-    col_title, col_cdi, col_ibov, col_period = st.columns([3, 0.6, 0.8, 0.8])
+    col_title, col_cdi, col_ibov, col_period = st.columns([2, 1, 1, 2])
     with col_title:
         st.markdown(
-            f'<div class="report-card fade-in chart-title-card">'
-            f'<h2>{icon("trending_up", color=COLORS["accent"])} Cotacao — {ticker}</h2>'
-            f"</div>",
+            f'<p style="font-size:16px;font-weight:600;color:#e4e4e7;margin:8px 0 0 0;'
+            f'font-family:Plus Jakarta Sans,sans-serif;">'
+            f'Cotacao — {ticker}</p>',
             unsafe_allow_html=True,
         )
     with col_cdi:
-        st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
         show_cdi = st.checkbox("CDI", value=False, key=f"cdi_check_{ticker}")
-        st.markdown('</div>', unsafe_allow_html=True)
     with col_ibov:
-        st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
         show_ibov = st.checkbox("Ibovespa", value=False, key=f"ibov_check_{ticker}")
-        st.markdown('</div>', unsafe_allow_html=True)
     with col_period:
-        st.markdown('<div class="chart-period-wrapper">', unsafe_allow_html=True)
-        period = st.selectbox(
+        period_selected = st.segmented_control(
             "Periodo",
             options=list(PERIOD_LABELS.keys()),
             format_func=lambda x: PERIOD_LABELS[x],
-            index=3,
+            default="1y",
             label_visibility="collapsed",
             key=f"period_{ticker}",
         )
-        st.markdown('</div>', unsafe_allow_html=True)
+        period = period_selected or "1y"
 
     yahoo = YFinanceClient()
 
@@ -523,8 +808,22 @@ if "last_result" in st.session_state:
 
     # ── Section 2: Financial indicators ──────────────────────────────────
     with st.expander("Indicadores Financeiros", expanded=True):
+        st.markdown(
+            f'<p style="color:#71717a;font-size:12px;font-style:italic;margin:4px 0 12px 0;'
+            f'font-family:Plus Jakarta Sans,sans-serif;">'
+            f'Dados fundamentalistas: TTM (ultimos 12 meses) \u00b7 '
+            f'Cotacao: {datetime.now().strftime("%d/%m/%Y")} \u00b7 Fonte: Yahoo Finance</p>',
+            unsafe_allow_html=True,
+        )
         if result.financials:
             st.markdown(result.financials, unsafe_allow_html=True)
+            st.markdown(
+                '<p style="color:#52525b;font-size:11px;font-style:italic;margin:8px 0 0 0;">'
+                'TTM = Trailing Twelve Months (ultimos 12 meses). YoY = Year over Year (variacao anual). '
+                'Dados podem apresentar divergencias pontuais. Para decisoes de investimento, '
+                'consulte os demonstrativos oficiais no site de RI da empresa.</p>',
+                unsafe_allow_html=True,
+            )
         else:
             st.caption("Informacao nao disponivel.")
 
@@ -545,6 +844,12 @@ if "last_result" in st.session_state:
             st.markdown(result.synthesis, unsafe_allow_html=True)
         else:
             st.caption("Informacao nao disponivel.")
+
+    # ── Section 5: Peer comparison (on-demand) ───────────────────────────
+    st.markdown("---")
+    with st.expander("Comparacao Setorial", expanded=False):
+        provider = get_provider(active_provider, api_key=active_key)
+        _render_peer_comparison_section(ticker, result.brapi_data, provider)
 
     # ── Export buttons ───────────────────────────────────────────────────
     st.divider()
