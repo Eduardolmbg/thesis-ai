@@ -25,9 +25,9 @@ echo [OK] Python %PYVER% encontrado
 echo.
 
 :: Criar ambiente virtual
-if not exist "venv" (
+if not exist ".verto" (
     echo [1/3] Criando ambiente virtual...
-    python -m venv venv
+    python -m .verto .verto
     if errorlevel 1 (
         echo [ERRO] Falha ao criar ambiente virtual.
         pause
@@ -41,7 +41,7 @@ echo.
 
 :: Instalar dependencias
 echo [2/3] Instalando dependencias...
-call venv\Scripts\activate.bat
+call .verto\Scripts\activate.bat
 pip install -r requirements.txt --quiet
 if errorlevel 1 (
     echo [ERRO] Falha ao instalar dependencias.
@@ -76,7 +76,7 @@ echo.
 echo    start.bat
 echo.
 echo  Ou manualmente:
-echo    venv\Scripts\activate
+echo    .verto\Scripts\activate
 echo    streamlit run app.py
 echo ══════════════════════════════════════════════════
 echo.

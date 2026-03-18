@@ -3,7 +3,7 @@ chcp 65001 >nul 2>&1
 title Verto
 
 :: Verificar se setup foi feito
-if not exist "venv" (
+if not exist ".verto" (
     echo Ambiente virtual nao encontrado. Executando setup primeiro...
     echo.
     call setup.bat
@@ -17,8 +17,8 @@ if not exist ".env" (
     exit /b 1
 )
 
-:: Ativar venv e iniciar
-call venv\Scripts\activate.bat
+:: Ativar .verto e iniciar
+call .verto\Scripts\activate.bat
 echo Iniciando Verto...
 echo Acesse: http://localhost:8501
 echo.

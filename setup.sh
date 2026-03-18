@@ -12,7 +12,7 @@ if ! command -v python3 &>/dev/null; then
     echo "[ERRO] Python 3 nao encontrado!"
     echo ""
     echo "Instale com:"
-    echo "  Ubuntu/Debian: sudo apt install python3 python3-venv python3-pip"
+    echo "  Ubuntu/Debian: sudo apt install python3 python3-.verto python3-pip"
     echo "  macOS:         brew install python3"
     echo ""
     exit 1
@@ -23,9 +23,9 @@ echo "[OK] $PYVER encontrado"
 echo ""
 
 # Criar ambiente virtual
-if [ ! -d "venv" ]; then
+if [ ! -d ".verto" ]; then
     echo "[1/3] Criando ambiente virtual..."
-    python3 -m venv venv
+    python3 -m .verto .verto
     echo "      Ambiente virtual criado."
 else
     echo "[1/3] Ambiente virtual ja existe."
@@ -34,7 +34,7 @@ echo ""
 
 # Instalar dependencias
 echo "[2/3] Instalando dependencias..."
-source venv/bin/activate
+source .verto/bin/activate
 pip install -r requirements.txt --quiet
 echo "      Dependencias instaladas."
 echo ""
@@ -64,7 +64,7 @@ echo ""
 echo "   ./start.sh"
 echo ""
 echo " Ou manualmente:"
-echo "   source venv/bin/activate"
+echo "   source .verto/bin/activate"
 echo "   streamlit run app.py"
 echo "══════════════════════════════════════════════════"
 echo ""

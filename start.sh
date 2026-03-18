@@ -2,7 +2,7 @@
 set -e
 
 # Verificar se setup foi feito
-if [ ! -d "venv" ]; then
+if [ ! -d ".verto" ]; then
     echo "Ambiente virtual nao encontrado. Executando setup primeiro..."
     echo ""
     bash setup.sh
@@ -15,8 +15,8 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Ativar venv e iniciar
-source venv/bin/activate
+# Ativar .verto e iniciar
+source .verto/bin/activate
 echo "Iniciando Verto..."
 echo "Acesse: http://localhost:8501"
 echo ""
