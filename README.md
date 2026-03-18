@@ -28,34 +28,20 @@
 
 **Pre-requisitos:** Python 3.10+ e uma API key gratuita do [Gemini](https://aistudio.google.com/apikey) ou [Groq](https://console.groq.com/keys).
 
-### Windows (2 cliques)
+### Windows
 
-1. Baixe o projeto e execute **`setup.bat`** (instala tudo automaticamente)
-2. Edite o arquivo `.env` e cole sua API key
-3. Execute **`start.bat`** para iniciar
+1. Baixe o projeto e de duplo clique em **`verto.bat`**
+2. Configure sua API key direto na sidebar do app e clique "Salvar configuracao"
 
 ### Mac / Linux
 
 ```bash
 git clone https://github.com/Eduardolmbg/Verto.git
 cd Verto
-./setup.sh       # instala tudo
-nano .env        # cole sua API key
-./start.sh       # inicia o app
+./verto.sh
 ```
 
-### Manual
-
-```bash
-git clone https://github.com/Eduardolmbg/Verto.git
-cd Verto
-python -m venv .verto
-.verto\Scripts\activate      # Mac/Linux: source .verto/bin/activate
-pip install -r requirements.txt
-cp .env.example .env       # Windows: copy .env.example .env
-# Edite .env e preencha sua API key
-streamlit run app.py
-```
+Na primeira vez ele instala tudo e abre o app. Configure sua API key na sidebar.
 
 Acesse `http://localhost:8501`, configure o provider na sidebar, digite um ticker e clique em **Gerar Analise**.
 

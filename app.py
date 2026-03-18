@@ -136,18 +136,8 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        '<div class="sidebar-section-title">brapi.dev Token (opcional)</div>',
-        unsafe_allow_html=True,
-    )
-
-    brapi_token = st.text_input(
-        "brapi.dev Token",
-        type="password",
-        value=st.session_state.get("brapi_token", config.BRAPI_TOKEN),
-        help="Fonte primaria: Yahoo Finance (automatico). brapi.dev e usado como fallback.",
-        label_visibility="collapsed",
-    )
+    # brapi token carregado do .env (fallback silencioso, sem expor na UI)
+    brapi_token = st.session_state.get("brapi_token", config.BRAPI_TOKEN)
 
     if st.button("Salvar configuracao", width="stretch"):
         # Salvar key para ESTE provider
@@ -161,7 +151,6 @@ with st.sidebar:
         config.save_env(
             LLM_PROVIDER=provider_name,
             LLM_API_KEY=api_key,
-            BRAPI_TOKEN=brapi_token,
         )
         st.success("Configuracao salva.")
 

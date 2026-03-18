@@ -1,6 +1,9 @@
 @echo off
 chcp 65001 >nul 2>&1
-title Verto - Setup
+title Verto
+
+:: Se ja tem venv e .env, vai direto pro app
+if exist ".verto\Scripts\activate.bat" if exist ".env" goto :start
 
 echo.
 echo  ╔══════════════════════════════════════╗
@@ -27,7 +30,7 @@ echo.
 :: Criar ambiente virtual
 if not exist ".verto" (
     echo [1/3] Criando ambiente virtual...
-    python -m .verto .verto
+    python -m venv .verto
     if errorlevel 1 (
         echo [ERRO] Falha ao criar ambiente virtual.
         pause
@@ -55,29 +58,18 @@ echo.
 if not exist ".env" (
     echo [3/3] Criando arquivo .env...
     copy .env.example .env >nul
-    echo       Arquivo .env criado a partir do template.
-    echo.
-    echo ══════════════════════════════════════════════
-    echo  IMPORTANTE: Abra o arquivo .env e configure
-    echo  sua API key antes de iniciar o Verto.
-    echo.
-    echo  APIs gratuitas:
-    echo    Gemini: https://aistudio.google.com/apikey
-    echo    Groq:   https://console.groq.com/keys
-    echo ══════════════════════════════════════════════
+    echo       Arquivo .env criado.
 ) else (
     echo [3/3] Arquivo .env ja existe.
 )
 
 echo.
-echo ══════════════════════════════════════════════════
-echo  Setup concluido! Para iniciar o Verto:
+echo Setup concluido!
 echo.
-echo    start.bat
+
+:start
+call .verto\Scripts\activate.bat
+echo Iniciando Verto...
+echo Acesse: http://localhost:8501
 echo.
-echo  Ou manualmente:
-echo    .verto\Scripts\activate
-echo    streamlit run app.py
-echo ══════════════════════════════════════════════════
-echo.
-pause
+streamlit run app.py
