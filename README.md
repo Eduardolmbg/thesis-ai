@@ -50,7 +50,7 @@ nano .env        # cole sua API key
 git clone https://github.com/Eduardolmbg/Verto.git
 cd Verto
 python -m venv .verto
-source .verto/bin/activate   # Windows: .verto\Scripts\activate
+.verto\Scripts\activate      # Mac/Linux: source .verto/bin/activate
 pip install -r requirements.txt
 cp .env.example .env       # Windows: copy .env.example .env
 # Edite .env e preencha sua API key
